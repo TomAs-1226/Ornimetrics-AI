@@ -1,0 +1,1533 @@
+{
+  "_globals": {
+    "servo_channel": 1,
+    "closed_angle": 0,
+    "open_angle": 90,
+    "k_confirm": 2,
+    "n_window": 5,
+    "window_sec": 1.2,
+    "min_gap_sec": 0.5,
+    "max_open_sec": 3.0,
+    "screenshot_after_sec": 1.5,
+    "screenshot_fullframe": true,
+    "screenshot_crops": true
+  },
+  "_defaults_for_unknown_label": {
+    "open_duration": 1.0,
+    "cooldown_duration": 8.0,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.5
+  },
+  "bird_variant_a": {
+    "open_duration": 2,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.5
+  },
+  "bird_variant_as": {
+    "open_duration": 2,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.5
+  },
+  "Acadian_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "American_Crow": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "American_Goldfinch": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "American_Pipit": {
+    "open_duration": 0.8,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "American_Redstart": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "American_Three_Toed_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "American_Three_toed_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Anna_Hummingbird": {
+    "open_duration": 0.3,
+    "cooldown_duration": 6,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.0
+  },
+  "annas-hummingbird": {
+    "open_duration": 0.3,
+    "cooldown_duration": 6,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.0
+  },
+  "Artic_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Baird_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Baltimore_Oriole": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Bank_Swallow": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Barn_Swallow": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Bay_Breasted_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Bay_breasted_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Belted_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Bewick_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Black_And_White_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Black_and_white_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Black_billed_Cuckoo": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Black_Capped_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Black_capped_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Black_footed_Albatross": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Black_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Black_Throated_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Black_throated_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Black_Throathed_Blue_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Black_throated_Blue_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Blue_Grosbeak": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Blue_Headed_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Blue_headed_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Blue_Jay": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Blue_Winged_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "blue-jay": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "blue-winged-warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Boat_Tailed_Grackle": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Bobolink": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Bohemian_Waxwing": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Brandt_Cormorant": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Brewer_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Bronzed_Cowbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Brown_Creeper": {
+    "open_duration": 0.7,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Brown_Pelican": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Brown_Thrasher": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Cactus_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "California_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Canada_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Cape_Glossy_Starling": {
+    "open_duration": 0.4,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Cape_May_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Cardinal": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "carolina-chickadee": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Carolina_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "carolina-wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Caspian_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Cedar_Waxwing": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Cerulean_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Chestnut_Sided_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Chipping_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "chipping-sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Chuck_Will_Widow": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Clark_Nutcracker": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Clay_Colored_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Cliff_Swallow": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Common_Raven": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Common_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "common-yellowthroat": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Common_Yellowthroat": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "common-eider": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Crested_Auklet": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Downy_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Eared_Grebe": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Eastern_Towhee": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "eastern-towhee": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Elegant_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "European_Goldfinch": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Evening_Grosbeak": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Field_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Fish_Crow": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Florida_Jay": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Forsters_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Fox_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Frigatebird": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.85,
+    "screenshot_after_sec": 2.5
+  },
+  "Geococcyx": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Glaucous_Winged_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Golden_Winged_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Grasshopper_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Gray_Catbird": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Gray_Crowned_Rosy_Finch": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Gray_Kingbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Great_Crested_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Great_Grey_Shrike": {
+    "open_duration": 1.0,
+    "cooldown_duration": 8.0,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.5
+  },
+  "Green_Jay": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "Green_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Green_Tailed_Towhee": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Green_Violetear": {
+    "open_duration": 0.3,
+    "cooldown_duration": 6,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.0
+  },
+  "Groove_billed_Ani": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Harris_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "harris-hawk": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.85,
+    "screenshot_after_sec": 2.5
+  },
+  "Heermann_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Henslow_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Herring_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Hooded_Merganser": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Hooded_Oriole": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Hooded_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Horned_Grebe": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Horned_Lark": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 2.0
+  },
+  "Horned_Puffin": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "House_Sparrow": {
+    "open_duration": 0.4,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "House_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Indigo_Bunting": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "indigo-bunting": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Ivory_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Kentucky_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Laysan_Albatross": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Lazuli_Bunting": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Le_Conte_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Least_Auklet": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Least_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Least_Tern": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Lincoln_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Loggerhead_Shrike": {
+    "open_duration": 1.0,
+    "cooldown_duration": 8.0,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.5
+  },
+  "Long_Tailed_Jaeger": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Louisiana_Waterthrush": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Magnolia_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Mallard": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Mangrove_Cuckoo": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Marsh_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Mockingbird": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Mourning_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Myrtle_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Nashville_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Nelson_Sharp_Tailed_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Nighthawk": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Northern_Flicker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Northern_Fulmar": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Northern_Waterthrush": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Olive_Sided_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Orange_Crowned_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Orchard_Oriole": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Ovenbird": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Pacific_Loon": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Painted_Bunting": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "painted-bunting": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Palm_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Parakeet_Auklet": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Pelagic_Cormorant": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Philadelphia_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Pied_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Pied_billed_Grebe": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Pigeon_Guillemot": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Pileated_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Pine_Grosbeak": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Pine_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Pomarine_Jaeger": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Prairie_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Prothonotary_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "prothonotary-warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Purple_Finch": {
+    "open_duration": 0.8,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Red_Bellied_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Red_Breasted_Merganser": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Red_Cockaded_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Red_Eyed_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Red_Faced_Cormorant": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Red_Headed_Woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "Red_Legged_Kittiwake": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Red_winged_Blackbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "red-winged-blackbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Rhinoceros_Auklet": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Ringed_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Rock_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "rock-pigeon": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Rose_Breasted_Grosbeak": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Ruby_throated_Hummingbird": {
+    "open_duration": 0.3,
+    "cooldown_duration": 6,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.0
+  },
+  "Rufous_Hummingbird": {
+    "open_duration": 0.3,
+    "cooldown_duration": 6,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.0
+  },
+  "Rusty_Blackbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Sage_Thrasher": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Savannah_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Sayornis": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Scarlet_Tanager": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "scarlet-tanager": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Scissor_Tailed_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Scott_Oriole": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Seaside_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Shiny_Cowbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Slaty_Backed_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Song_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "song-sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Sooty_Albatross": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Summer_Tanager": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "Swainson_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Tennessee_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Tree_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Tree_Swallow": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Tropical_Kingbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Vermilion_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Vesper_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Warbling_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Western_Grebe": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Western_Gull": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "Western_Meadowlark": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "Western_Wood_Pewee": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Whip_Poor_Will": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Whip_poor_Will": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "White_Breasted_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "White_breasted_Kingfisher": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "White_Breasted_Nuthatch": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "white-breasted-nuthatch": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "White_breasted_Nuthatch": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "White_Crowned_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "white-crowned-sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "White_crowned_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "White_Eyed_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "White_eyed_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "White_Necked_Raven": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "White_necked_Raven": {
+    "open_duration": 0.6,
+    "cooldown_duration": 25,
+    "confidence_threshold": 0.7,
+    "screenshot_after_sec": 1.8
+  },
+  "White_Pelican": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "White_Throated_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "white-throated-sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "White_throated_Sparrow": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Wilson_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Winter_Wren": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "Worm_Eating_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Worm_eating_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Yellow_Bellied_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Yellow_bellied_Flycatcher": {
+    "open_duration": 0.8,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Yellow_Billed_Cuckoo": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Yellow_billed_Cuckoo": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.75,
+    "screenshot_after_sec": 2.0
+  },
+  "Yellow_Breasted_Chat": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Yellow_breasted_Chat": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "Yellow_Throated_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Yellow_throated_Vireo": {
+    "open_duration": 0.9,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.3
+  },
+  "Yellow_Warbler": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "Yellow_headed_Blackbird": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "acorn-woodpecker": {
+    "open_duration": 1.2,
+    "cooldown_duration": 15,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.5
+  },
+  "eastern-bluebird": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.4
+  },
+  "dark-eyed-junco": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "dark_Eyed_Junco": {
+    "open_duration": 0.9,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "hermit-thrush": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.4
+  },
+  "juniper-titmouse": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "northern-cardinal": {
+    "open_duration": 1.1,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.3
+  },
+  "northern-mockingbird": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.55,
+    "screenshot_after_sec": 1.4
+  },
+  "northern-waterthrush": {
+    "open_duration": 1.0,
+    "cooldown_duration": 10,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.2
+  },
+  "orchard-oriole": {
+    "open_duration": 0.8,
+    "cooldown_duration": 20,
+    "confidence_threshold": 0.6,
+    "screenshot_after_sec": 1.6
+  },
+  "ruddy-duck": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "snow-goose": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  },
+  "squirrel": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.9,
+    "screenshot_after_sec": 2.5
+  },
+  "tufted-titmouse": {
+    "open_duration": 0.6,
+    "cooldown_duration": 8,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.0
+  },
+  "varied-thrush": {
+    "open_duration": 0.9,
+    "cooldown_duration": 12,
+    "confidence_threshold": 0.5,
+    "screenshot_after_sec": 1.4
+  },
+  "wood-duck": {
+    "open_duration": 0.0,
+    "cooldown_duration": 9999,
+    "confidence_threshold": 0.8,
+    "screenshot_after_sec": 2.5
+  }
+}
