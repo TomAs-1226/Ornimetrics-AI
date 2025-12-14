@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from src.yolo_detect import YOLODetector, load_rgb_image
-from src.depth_to_points import backproject_depth
+from src.depth_to_points import backproject_depth, BackprojectStats
 from src.reid_embedder import PointReID
 from src.gallery import Gallery, cosine_distance
 from src.tracker import Tracker
@@ -37,6 +37,29 @@ def parse_args():
     parser.add_argument("--depth-gate-k", type=float, default=2.5)
     parser.add_argument("--smooth-window", type=int, default=5)
     return parser.parse_args()
+
+
+def _points_from_depth(depth, intrinsics, bbox):
+    """Accept either a depth map or a precomputed Nx3 point cloud."""
+    if depth is None:
+        empty_stats = BackprojectStats(0, 0, (0, 0, 0, 0), 0.0, 0.0)
+        return np.zeros((0, 3), dtype=np.float32), empty_stats
+    if depth.ndim == 2 and depth.shape[1] == 3:
+        pc = depth.astype(np.float32)
+    elif depth.ndim == 2:
+        return backproject_depth(depth, intrinsics, bbox)
+    elif depth.ndim == 3 and depth.shape[1] == 3:
+        pc = depth.reshape(-1, 3).astype(np.float32)
+    else:
+        raise ValueError("Depth input must be 2D depth map or Nx3 point cloud")
+    stats = BackprojectStats(
+        num_depth_pixels=pc.shape[0],
+        num_points_raw=int(pc.shape[0]),
+        bbox=tuple(int(x) for x in bbox) if bbox is not None else (0, 0, 0, 0),
+        depth_min=float(pc[:, 2].min()) if pc.size else 0.0,
+        depth_max=float(pc[:, 2].max()) if pc.size else 0.0,
+    )
+    return pc, stats
 
 
 def load_depth(path):
@@ -84,13 +107,27 @@ def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, deci
     return block
 
 
-def process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrinsics, threshold, debug_dir=None, smooth_window=5, debug=False):
+def process_frame(
+    rgb,
+    depth,
+    det_model,
+    embedder,
+    gallery,
+    tracker,
+    db,
+    intrinsics,
+    threshold,
+    debug_dir=None,
+    smooth_window=5,
+    debug=False,
+    return_debug=False,
+):
     detections = det_model.detect(rgb)
     processed = []
     frame_debug = []
     for det in detections:
         bbox = det["bbox"]
-        points, bp_stats = backproject_depth(depth, intrinsics, bbox)
+        points, bp_stats = _points_from_depth(depth, intrinsics, bbox)
         embed_result = embedder.embed(points)
         emb = embed_result.embedding.cpu().numpy()
         det["embedding"] = emb
@@ -146,7 +183,14 @@ def process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrins
                         det["frames_used"] = len(t.embedding_history)
                     break
         decision = det.get("decision", {})
-        block = detection_debug_block(det, {**det.get("bp_stats", {}), **det.get("preprocess_stats", {})}, use_emb, decision.get("top5", []), decision, tracker_stats)
+        block = detection_debug_block(
+            det,
+            {**det.get("bp_stats", {}), **det.get("preprocess_stats", {})},
+            use_emb,
+            decision.get("top5", []),
+            decision,
+            tracker_stats,
+        )
         frame_debug.append(block)
     outputs = [format_detection(d) for d in tracked]
     if debug and debug_dir is not None:
@@ -154,6 +198,8 @@ def process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrins
         with open(debug_dir / f"frame_{frame_id:04d}.json", "w", encoding="utf-8") as f:
             json.dump(frame_debug, f, indent=2, default=lambda o: o if isinstance(o, (int, float, str)) else str(o))
         print(json.dumps(frame_debug, indent=2))
+    if return_debug:
+        return outputs, frame_debug
     return outputs
 
 
@@ -177,7 +223,21 @@ def main():
     if args.rgb:
         rgb = load_rgb_image(args.rgb)
         depth = load_depth(args.depth) if args.depth else demo_depth(rgb)
-        outputs = process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrinsics, args.threshold, debug_dir, args.smooth_window, debug=args.debug_identity)
+        outputs, frame_debug = process_frame(
+            rgb,
+            depth,
+            det_model,
+            embedder,
+            gallery,
+            tracker,
+            db,
+            intrinsics,
+            args.threshold,
+            debug_dir,
+            args.smooth_window,
+            debug=args.debug_identity,
+            return_debug=True,
+        )
         print(json.dumps(outputs, indent=2))
         return
 
@@ -187,7 +247,21 @@ def main():
     if args.camera == "demo":
         rgb = np.zeros((480, 640, 3), dtype=np.uint8)
         depth = demo_depth(rgb)
-        outputs = process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrinsics, args.threshold, debug_dir, args.smooth_window, debug=args.debug_identity)
+        outputs, frame_debug = process_frame(
+            rgb,
+            depth,
+            det_model,
+            embedder,
+            gallery,
+            tracker,
+            db,
+            intrinsics,
+            args.threshold,
+            debug_dir,
+            args.smooth_window,
+            debug=args.debug_identity,
+            return_debug=True,
+        )
         print(json.dumps(outputs, indent=2))
         return
 
@@ -201,7 +275,20 @@ def main():
                 break
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             depth = demo_depth(rgb)
-            outputs = process_frame(rgb, depth, det_model, embedder, gallery, tracker, db, intrinsics, args.threshold, debug_dir, args.smooth_window, debug=args.debug_identity)
+            outputs = process_frame(
+                rgb,
+                depth,
+                det_model,
+                embedder,
+                gallery,
+                tracker,
+                db,
+                intrinsics,
+                args.threshold,
+                debug_dir,
+                args.smooth_window,
+                debug=args.debug_identity,
+            )
             print(json.dumps(outputs))
     finally:
         cap.release()

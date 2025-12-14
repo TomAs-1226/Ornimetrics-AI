@@ -1,7 +1,9 @@
-# BirdID PC Demo
+# Point-Cloud Identity PC Demo
 
-This Streamlit app lets you exercise the BirdID pipeline on a PC using uploaded
-RGB and depth/point-cloud files.
+This Streamlit app wraps the YOLO + point-cloud re-id pipeline so you can test
+identity creation/matching locally with uploaded RGB and depth/point-cloud
+files. YOLO is only used for detection/class labels; identity is driven by the
+point-cloud embedding + gallery thresholds.
 
 ## Setup
 
@@ -16,28 +18,56 @@ streamlit run pc_demo/app.py
 ```
 
 Upload an RGB image plus one of:
-- Depth image: 16-bit PNG (millimeters) or `.npy` float32 depth map
-- Point cloud: `.ply` or `.pcd` (requires `open3d`)
+- Depth image: 16-bit PNG (millimeters) or `.npy` float32 depth map.
+- Point cloud: `.ply` or `.pcd` (requires `open3d`).
 
-Controls allow setting species, optional bounding box, seeding a known bird, or
-forcing enrollment. If `best.pt` exists in the repo root and `ultralytics` is
-installed, the demo can auto-detect species/bbox from the uploaded RGB image; a
-manual fallback is always available. The output panel shows the decision
-(DISPENSE/ENROLL/DENY), distances, quality score, and cooldown state. Debug
-panes render the RGB with bbox, depth crop stats (dtype/min/max/valid percent),
-point count, and PCA-derived diagnostics used for planar spoof rejection. A
-`Trusted PLY input` toggle lets you skip planar spoof denial for uploads when
-testing known-good point clouds on PC (kept strict by default).
+Controls mirror the pipeline features:
+- YOLO detection (optional) with a toggle to override the class label using your
+  species input.
+- Preprocessing toggles: plane removal, depth gating, voxel/FPS sampling,
+  normalization modes (including scale-feature option).
+- Thresholds and margin guard for open-set identity creation plus an embedding
+  smoothing window for tracker stability.
+- `Enable identity debug logging` to emit the per-detection debug blocks added
+  in the main pipeline (preprocessing counts, depth gating range, top-5 gallery
+  distances, threshold/margin decisions, tracker costs) and write them to
+  `runs/debug_identity/<timestamp>/`.
 
 Depth handling notes:
 - Depth PNGs are decoded with `cv2.IMREAD_UNCHANGED`; uint16 values are assumed
   to be millimeters and converted to meters automatically.
-- If segmentation returns zero points, the pipeline falls back to the raw valid
-  depth crop to avoid erroneous `no_points` denials.
+- Point-cloud uploads bypass back-projection and feed directly into the
+  preprocessing/embedding path, preserving identity-bearing geometry.
 
-## Firebase (optional)
+## Example debug block (`--debug_identity` enabled)
 
-If `GOOGLE_APPLICATION_CREDENTIALS` points to a valid service account and
-`google-cloud-firestore`/`google-cloud-storage` are installed, the demo will log
-events and upload artifacts using the same paths as the production pipeline.
-Without credentials it runs in local-only mode.
+```
+[
+  {
+    "class": "sparrow",
+    "bbox": [12, 8, 140, 160],
+    "preprocessing": {
+      "num_points_raw": 8123,
+      "num_points_after_crop": 8123,
+      "num_points_after_plane_removal": 7900,
+      "plane_removed_ratio": 0.027,
+      "num_points_after_depth_gate": 7600,
+      "depth_gate_removed_pct": 0.038,
+      "depth_gate_range": 0.42,
+      "num_points_after_voxel": 2100,
+      "num_points_final": 2048,
+      "scale": 0.37
+    },
+    "embedding_norm": 1.0,
+    "top5": [{"id": "sparrow_0001", "dist": 0.18}, {"id": "sparrow_0003", "dist": 0.44}],
+    "best_match_id": "sparrow_0001",
+    "best_dist": 0.18,
+    "second_best_dist": 0.44,
+    "margin": 0.26,
+    "threshold": 0.30,
+    "new_identity": false,
+    "reason": "matched",
+    "tracker": {"motion_cost": 0.12, "appearance_cost": 0.18, "combined_cost": 0.15}
+  }
+]
+```
