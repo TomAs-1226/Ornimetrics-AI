@@ -14,6 +14,9 @@ def format_detection(det: Dict[str, Any]) -> Dict[str, Any]:
         "quality_score": det.get("quality", 1.0),
         "frames_used": det.get("frames_used", 1),
         "deny_reason": det.get("deny_reason"),
+        "decision_state": det.get("decision_state"),
+        "decision_reason": det.get("decision_reason"),
+        "action": det.get("action"),
     }
 
 

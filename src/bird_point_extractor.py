@@ -86,6 +86,7 @@ class AntiSpoofScorer:
         linearity = float((l3 - l2) / (l3 + 1e-6))
         omnivariance = float((l1 * l2 * l3) ** (1 / 3))
         depth_std = float(np.std(points[:, 2]))
+        surface_variation = float(l1 / (l1 + l2 + l3 + 1e-6))
         stats.update({
             "eig_min": float(l1),
             "eig_mid": float(l2),
@@ -94,6 +95,7 @@ class AntiSpoofScorer:
             "linearity": linearity,
             "omnivariance": omnivariance,
             "depth_std": depth_std,
+            "surface_variation": surface_variation,
         })
 
     @staticmethod
@@ -105,19 +107,25 @@ class AntiSpoofScorer:
         planarity = stats.get("planarity", 1.0)
         anisotropy = stats.get("anisotropy", 0.0)
         depth_std = stats.get("depth_std", 0.0)
+        neighbour_density = stats.get("neighbor_density", 0.0)
+        depth_span = stats.get("depth_span", extent_z)
         thickness = extent_z / (np.sqrt(extent_x * extent_y) + 1e-6)
-        planar_penalty = max(0.0, 1.0 - planarity * 8)
+        planar_score = np.clip((planarity - 0.02) * 25.0, 0.0, 1.0)
         aspect_reward = max(0.0, 1.0 - abs(aspect - 1.5) * 0.2)
-        depth_reward = min(1.0, depth_std * 25)
-        thickness_reward = min(1.0, thickness * 12)
-        anisotropy_reward = max(0.0, min(1.0, anisotropy))
+        depth_reward = np.clip(depth_std * 30.0, 0.0, 1.0)
+        thickness_reward = np.clip(thickness * 15.0, 0.0, 1.0)
+        anisotropy_reward = np.clip(anisotropy, 0.0, 1.0)
+        density_reward = np.clip(neighbour_density / 12.0, 0.0, 1.0)
+        span_penalty = np.clip(depth_span * 1.5, 0.0, 1.0)
         score = (
             0.15 * aspect_reward
-            + 0.25 * depth_reward
-            + 0.25 * thickness_reward
-            + 0.25 * anisotropy_reward
-            + 0.1 * (1 - planar_penalty)
+            + 0.2 * depth_reward
+            + 0.2 * thickness_reward
+            + 0.2 * anisotropy_reward
+            + 0.15 * density_reward
+            + 0.1 * planar_score
         )
+        score *= (1.0 - 0.5 * span_penalty)
         return float(np.clip(score, 0.0, 1.0))
 
     def score(self, points: np.ndarray, stats: Dict[str, float]) -> float:
@@ -137,6 +145,10 @@ class AntiSpoofConfig:
     enabled: bool = False
     threshold: float = 0.6
     model_path: Optional[Path] = None
+    min_depth_std: float = 0.003
+    min_plane_removed_ratio: float = 0.05
+    max_depth_span: float = 0.5
+    min_neighbor_density: float = 6.0
 
 
 @dataclass
@@ -223,6 +235,13 @@ class BirdPointCloudExtractor:
         best = clusters[0]
         return points[best], {"num_clusters": len(clusters), "largest_cluster": float(len(best))}
 
+    def _neighbor_density(self, points: np.ndarray) -> float:
+        if points.shape[0] < 2:
+            return 0.0
+        tree = cKDTree(points)
+        counts = tree.query_ball_point(points, self.cfg.cluster_radius * 1.5, return_length=True)
+        return float(np.mean(counts))
+
     def _shape_stats(self, points: np.ndarray) -> Dict[str, float]:
         if points.size == 0:
             return {"extent_x": 0.0, "extent_y": 0.0, "extent_z": 0.0, "compactness": 0.0, "aspect": 0.0, "planarity": 1.0}
@@ -255,6 +274,20 @@ class BirdPointCloudExtractor:
             return 0.0, "no_valid_cluster"
         return max(self.cfg.quality_floor, 1.0 - stats.get("compactness", 0.0)), None
 
+    def _anti_spoof_guard(self, points: np.ndarray, stats: Dict[str, float]) -> Optional[str]:
+        cfg = self.cfg.anti_spoof
+        if points.shape[0] == 0:
+            return "spoof_background"
+        if stats.get("depth_std", 0.0) < cfg.min_depth_std:
+            return "spoof_background"
+        if stats.get("plane_removed_ratio", 0.0) < cfg.min_plane_removed_ratio and stats.get("planarity", 1.0) < self.cfg.planarity_ratio * 2:
+            return "planar_surface"
+        if stats.get("depth_span", 0.0) > cfg.max_depth_span and stats.get("surface_variation", 0.0) < 0.05:
+            return "spoof_background"
+        if stats.get("neighbor_density", 0.0) < cfg.min_neighbor_density:
+            return "spoof_background"
+        return None
+
     def extract(
         self,
         rgb: np.ndarray,
@@ -286,7 +319,11 @@ class BirdPointCloudExtractor:
         stats.update(cluster_stats)
         shape = self._shape_stats(clustered)
         stats.update(shape)
+        stats["neighbor_density"] = self._neighbor_density(clustered)
+        stats["depth_span"] = float(stats.get("depth_high", 0.0) - stats.get("depth_low", 0.0))
         quality, deny = self._quality(clustered, stats)
+        if self.cfg.anti_spoof.enabled and deny is None:
+            deny = self._anti_spoof_guard(clustered, stats)
         if self.cfg.anti_spoof.enabled and deny is None:
             spoof_score = self.anti_spoof.score(clustered, stats)
             stats["anti_spoof_score"] = spoof_score

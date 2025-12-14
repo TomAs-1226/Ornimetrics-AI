@@ -117,6 +117,9 @@ def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, deci
         "geometry_dist": decision.get("geometry_dist"),
         "new_identity": decision.get("new_identity"),
         "reason": decision.get("reason"),
+        "decision_state": det.get("decision_state"),
+        "decision_reason": det.get("decision_reason"),
+        "action": det.get("action"),
         "tracker": tracker_stats,
     }
     return block
@@ -160,6 +163,9 @@ def process_frame(
                 det["quality"] = extraction.quality
                 det["preprocess_stats"] = extraction.stats
                 det["decision"] = {"reason": extraction.deny_reason, "threshold": threshold, "new_identity": False}
+                det["decision_state"] = "rejected"
+                det["decision_reason"] = extraction.deny_reason
+                det["action"] = "rejected"
                 det["embedding"] = np.zeros((embedder.model.emb_dims,), dtype=np.float32)
                 processed.append(det)
                 continue
@@ -186,6 +192,10 @@ def process_frame(
             "reason": reason,
             "top5": scored,
         }
+        action = "dispense" if not create_new and reason == "matched" else "accepted"
+        det["decision_state"] = "rejected" if det.get("deny_reason") else ("accepted" if action == "accepted" else "dispensing")
+        det["decision_reason"] = reason
+        det["action"] = action
         if create_new:
             indiv_id = str(uuid.uuid4())
             name = generate_name()
