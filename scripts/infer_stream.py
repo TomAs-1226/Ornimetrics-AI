@@ -17,6 +17,7 @@ from src.naming import generate_name
 from src.db import IdentityDB
 from src.output_schema import format_detection
 from src.pc_preprocess import PreprocessConfig
+from src.bird_point_extractor import BirdPointCloudExtractor, BirdExtractorConfig
 
 
 def parse_args():
@@ -25,7 +26,7 @@ def parse_args():
     parser.add_argument("--rgb", help="RGB image path for offline", default=None)
     parser.add_argument("--depth", help="Depth image path for offline", default=None)
     parser.add_argument("--model", default=None, help="YOLO model path (defaults to bundled best.pt when present)")
-    parser.add_argument("--backbone", choices=["light", "heavy"], default="heavy", help="Point-cloud re-id backbone")
+    parser.add_argument("--backbone", choices=["light", "heavy", "xheavy"], default="heavy", help="Point-cloud re-id backbone")
     parser.add_argument("--intrinsics", nargs=4, type=float, metavar=("fx", "fy", "cx", "cy"), default=[525.0, 525.0, 319.5, 239.5])
     parser.add_argument("--threshold", type=float, default=0.05)
     parser.add_argument("--margin-guard", type=float, default=0.02)
@@ -37,6 +38,9 @@ def parse_args():
     parser.add_argument("--voxel", type=float, default=0.01)
     parser.add_argument("--fps-points", type=int, default=2048)
     parser.add_argument("--depth-gate-k", type=float, default=2.5)
+    parser.add_argument("--use-bird-extractor", action="store_true", help="Enable depth bird-only extractor")
+    parser.add_argument("--bird-cluster-radius", type=float, default=0.02)
+    parser.add_argument("--bird-min-points", type=int, default=64)
     parser.add_argument("--smooth-window", type=int, default=5)
     return parser.parse_args()
 
@@ -97,6 +101,7 @@ def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, deci
     block = {
         "class": det.get("class_name"),
         "bbox": det.get("bbox"),
+        "birdness": det.get("birdness"),
         "preprocessing": preprocess_stats,
         "embedding_norm": norm,
         "top5": sorted_scores,
@@ -127,13 +132,35 @@ def process_frame(
     smooth_window=5,
     debug=False,
     return_debug=False,
+    bird_extractor: Optional[BirdPointCloudExtractor] = None,
 ):
     detections = det_model.detect(rgb)
     processed = []
     frame_debug = []
     for det in detections:
         bbox = det["bbox"]
-        points, bp_stats = _points_from_depth(depth, intrinsics, bbox)
+        bp_stats = None
+        if bird_extractor is not None:
+            extraction = bird_extractor.extract(rgb, depth, bbox, intrinsics, mask=det.get("mask"))
+            det["birdness"] = {"score": extraction.quality, "stats": extraction.stats}
+            bp_stats = BackprojectStats(
+                num_depth_pixels=int(extraction.stats.get("num_depth_pixels", 0)),
+                num_points_raw=int(extraction.stats.get("num_points_raw", 0)),
+                bbox=(int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])),
+                depth_min=float(extraction.stats.get("depth_min", 0.0)),
+                depth_max=float(extraction.stats.get("depth_max", 0.0)),
+            )
+            points = extraction.points
+            if extraction.deny_reason:
+                det["deny_reason"] = extraction.deny_reason
+                det["quality"] = extraction.quality
+                det["preprocess_stats"] = extraction.stats
+                det["decision"] = {"reason": extraction.deny_reason, "threshold": threshold, "new_identity": False}
+                det["embedding"] = np.zeros((embedder.model.emb_dims,), dtype=np.float32)
+                processed.append(det)
+                continue
+        else:
+            points, bp_stats = _points_from_depth(depth, intrinsics, bbox)
         embed_result = embedder.embed(points)
         emb = embed_result.embedding.cpu().numpy()
         det["embedding"] = emb
@@ -179,7 +206,7 @@ def process_frame(
             det["min_dist"] = float(best_dist)
             det["second_best_dist"] = float(second_best)
             det["margin"] = float(margin)
-        det["bp_stats"] = bp_stats.__dict__
+        det["bp_stats"] = bp_stats.__dict__ if bp_stats else {}
         det["preprocess_stats"] = embed_result.preprocess_stats
         det["decision"] = det_info
         processed.append(det)
@@ -237,6 +264,16 @@ def main():
     tracker = Tracker(alpha=0.5, smooth_window=args.smooth_window)
     db = IdentityDB()
     debug_dir = ensure_debug_dir() if args.debug_identity else None
+    bird_extractor = None
+    if args.use_bird_extractor:
+        bird_extractor = BirdPointCloudExtractor(
+            BirdExtractorConfig(
+                depth_gate_k=args.depth_gate_k,
+                cluster_radius=args.bird_cluster_radius,
+                min_cluster_points=args.bird_min_points,
+                debug_dir=debug_dir,
+            )
+        )
 
     if args.rgb:
         rgb = load_rgb_image(args.rgb)
@@ -254,6 +291,7 @@ def main():
             debug_dir,
             args.smooth_window,
             debug=args.debug_identity,
+            bird_extractor=bird_extractor,
             return_debug=True,
         )
         print(json.dumps(outputs, indent=2))
@@ -278,6 +316,7 @@ def main():
             debug_dir,
             args.smooth_window,
             debug=args.debug_identity,
+            bird_extractor=bird_extractor,
             return_debug=True,
         )
         print(json.dumps(outputs, indent=2))
@@ -306,6 +345,7 @@ def main():
                 debug_dir,
                 args.smooth_window,
                 debug=args.debug_identity,
+                bird_extractor=bird_extractor,
             )
             print(json.dumps(outputs))
     finally:

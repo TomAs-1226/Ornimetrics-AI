@@ -27,3 +27,12 @@ def test_heavy_backbone_accepts_extra_features():
     result = embedder.embed(pc)
     assert result.embedding.shape[0] == embedder.model.emb_dims
     assert float(result.embedding.norm()) > 0
+
+
+def test_xheavy_transformer_backbone():
+    cfg = PreprocessConfig(normalization="center_only", append_scale=False, fps_points=16)
+    embedder = PointReID(preprocess_config=cfg, emb_dims=256, model_name="xheavy")
+    pc = np.random.rand(32, 3).astype(np.float32)
+    result = embedder.embed(pc)
+    assert result.embedding.shape[0] == embedder.model.emb_dims
+    assert float(result.embedding.norm()) > 0
