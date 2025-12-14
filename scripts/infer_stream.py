@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 import uuid
 import cv2
 import numpy as np
