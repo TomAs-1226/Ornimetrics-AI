@@ -26,6 +26,8 @@ Controls mirror the pipeline features:
   species input.
 - Preprocessing toggles: plane removal, depth gating, voxel/FPS sampling,
   normalization modes (including scale-feature option).
+- Re-id backbone choice: `heavy` (wider DGCNN for harder separation) or `light`
+  (smaller DGCNN for low-power), plus configurable embedding dimensionality.
 - Thresholds and margin guard for open-set identity creation plus an embedding
   smoothing window for tracker stability.
 - `Enable identity debug logging` to emit the per-detection debug blocks added

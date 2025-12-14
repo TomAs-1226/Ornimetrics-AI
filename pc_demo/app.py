@@ -96,7 +96,7 @@ def _load_yolo(model_path: str):
         return None
 
 
-def _get_embedder(cfg: PreprocessConfig) -> PointReID:
+def _get_embedder(cfg: PreprocessConfig, backbone: str, emb_dims: int) -> PointReID:
     key = (
         cfg.plane_removal,
         cfg.plane_distance,
@@ -105,10 +105,12 @@ def _get_embedder(cfg: PreprocessConfig) -> PointReID:
         cfg.depth_gate_k,
         cfg.normalization,
         cfg.append_scale,
+        backbone,
+        emb_dims,
     )
     existing_key = st.session_state.get("embedder_key")
     if existing_key != key:
-        st.session_state["embedder"] = PointReID(preprocess_config=cfg)
+        st.session_state["embedder"] = PointReID(preprocess_config=cfg, model_name=backbone, emb_dims=emb_dims)
         st.session_state["embedder_key"] = key
     return st.session_state["embedder"]
 
@@ -185,6 +187,8 @@ def main() -> None:
         options=["center_only", "center_and_scale", "center_and_scale_with_scale_feature"],
         index=0,
     )
+    backbone = st.selectbox("Re-id backbone", options=["heavy", "light"], index=0, help="Heavy = wider DGCNN for harder identities")
+    emb_dims = st.number_input("Embedding dims", min_value=64, max_value=1024, value=512 if backbone == "heavy" else 256, step=32)
     voxel_size = st.number_input("Voxel size (m)", min_value=0.001, max_value=0.1, value=0.01, step=0.001, format="%.3f")
     fps_points = st.number_input("Points for FPS", min_value=16, max_value=4096, value=2048, step=16)
     debug_identity = st.checkbox("Enable identity debug logging", value=True)
@@ -201,7 +205,7 @@ def main() -> None:
         append_scale=(normalization == "center_and_scale_with_scale_feature"),
     )
 
-    embedder = _get_embedder(cfg)
+    embedder = _get_embedder(cfg, backbone=backbone, emb_dims=int(emb_dims))
     gallery = _get_gallery(threshold, margin_guard)
     tracker = _get_tracker(int(smooth_window))
     db = _get_db()

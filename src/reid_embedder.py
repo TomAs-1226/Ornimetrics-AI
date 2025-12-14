@@ -5,6 +5,7 @@ import torch
 
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
 from src.models.dgcnn import DGCNN
+from src.models.dgcnn_heavy import DGCNNHeavy
 
 
 @dataclass
@@ -21,11 +22,15 @@ class PointReID:
         device: str = None,
         emb_dims: int = 256,
         preprocess_config: Optional[PreprocessConfig] = None,
+        model_name: str = "heavy",
     ):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.preprocess_config = preprocess_config or PreprocessConfig(fps_points=DEFAULT_POINTS)
         input_dims = 3 + int(self.preprocess_config.append_scale)
-        self.model = DGCNN(emb_dims=emb_dims, input_dims=input_dims).to(self.device)
+        if model_name == "heavy":
+            self.model = DGCNNHeavy(emb_dims=max(emb_dims, 384), input_dims=input_dims).to(self.device)
+        else:
+            self.model = DGCNN(emb_dims=emb_dims, input_dims=input_dims).to(self.device)
         if model_path:
             state = torch.load(model_path, map_location=self.device)
             self.model.load_state_dict(state)

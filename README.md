@@ -21,7 +21,7 @@ Each `.ply` contains the cropped object point cloud. Training samples batches fr
 ## Training
 
 ```bash
-python scripts/train_reid.py --data data/ --epochs 10 --batch-size 2 --k-individuals 8 --m-samples 4 --loss supcon
+python scripts/train_reid.py --data data/ --epochs 10 --batch-size 2 --k-individuals 8 --m-samples 4 --loss supcon --backbone heavy
 ```
 
 Outputs checkpoints to `checkpoints/reid.pt` and metrics to `runs/train_reid/<timestamp>_metrics.json` (Recall@1/5, mAP logged per epoch).
@@ -47,8 +47,8 @@ Ensures embeddings are non-collapsed, self-consistent, geometry-aware, and that 
 ## Inference
 
 ```bash
-# Live camera demo
-python scripts/infer_stream.py --camera demo --debug_identity
+# Live camera demo (heavy backbone)
+python scripts/infer_stream.py --camera demo --debug_identity --backbone heavy
 
 # Offline RGB + depth
 python scripts/infer_stream.py --rgb path/to/rgb.jpg --depth path/to/depth.png --debug_identity
@@ -56,6 +56,7 @@ python scripts/infer_stream.py --rgb path/to/rgb.jpg --depth path/to/depth.png -
 
 Key options:
 - `--debug_identity`: emit per-detection debug JSON and save to `runs/debug_identity/<timestamp>/frame_XXXX.json`.
+- `--backbone`: choose `heavy` (default DGCNNHeavy, wider channels for harder identities) or `light` (smaller DGCNN for low-power).
 - `--normalization`: `center_only` (default) avoids identity-erasing scaling; `center_and_scale`/`center_and_scale_with_scale_feature` optional.
 - `--plane-removal`/`--no-plane-removal`, `--depth-gate-k`, `--voxel`, `--fps-points` control preprocessing.
 

@@ -13,6 +13,7 @@ from pytorch_metric_learning import losses, miners
 
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
 from src.models.dgcnn import DGCNN
+from src.models.dgcnn_heavy import DGCNNHeavy
 
 
 def load_ply(path: Path) -> np.ndarray:
@@ -85,13 +86,16 @@ class TrainConfig:
 
 
 class MetricTrainer:
-    def __init__(self, data_root: str, batch_size: int = 4, emb_dims: int = 256, config: TrainConfig = None, preprocess_cfg: PreprocessConfig = None):
+    def __init__(self, data_root: str, batch_size: int = 4, emb_dims: int = 256, config: TrainConfig = None, preprocess_cfg: PreprocessConfig = None, backbone: str = "heavy"):
         self.config = config or TrainConfig()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.preprocess_cfg = preprocess_cfg or PreprocessConfig(fps_points=DEFAULT_POINTS)
         self.dataset = SpeciesBatchDataset(data_root, self.preprocess_cfg)
         self.batch_size = batch_size
-        self.model = DGCNN(emb_dims=emb_dims).to(self.device)
+        if backbone == "heavy":
+            self.model = DGCNNHeavy(emb_dims=max(emb_dims, 384)).to(self.device)
+        else:
+            self.model = DGCNN(emb_dims=emb_dims).to(self.device)
         if self.config.loss == "supcon":
             self.criterion = losses.SupConLoss()
         elif self.config.loss == "arcface":
@@ -166,6 +170,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--emb-dims", type=int, default=256)
+    parser.add_argument("--backbone", choices=["light", "heavy"], default="heavy")
     parser.add_argument("--loss", choices=["triplet", "supcon", "arcface"], default="supcon")
     parser.add_argument("--output", default="checkpoints/reid.pt")
     parser.add_argument("--k-individuals", type=int, default=8)
@@ -178,7 +183,14 @@ def main():
     args = parse_args()
     cfg = TrainConfig(k_individuals=args.k_individuals, m_samples=args.m_samples, loss=args.loss, lr=args.lr, epochs=args.epochs)
     preprocess_cfg = PreprocessConfig(fps_points=DEFAULT_POINTS)
-    trainer = MetricTrainer(args.data, batch_size=args.batch_size, emb_dims=args.emb_dims, config=cfg, preprocess_cfg=preprocess_cfg)
+    trainer = MetricTrainer(
+        args.data,
+        batch_size=args.batch_size,
+        emb_dims=args.emb_dims,
+        config=cfg,
+        preprocess_cfg=preprocess_cfg,
+        backbone=args.backbone,
+    )
     metrics_log = []
     for epoch in range(args.epochs):
         loss = trainer.train_epoch()

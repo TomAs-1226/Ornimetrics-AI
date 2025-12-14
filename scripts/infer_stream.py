@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument("--rgb", help="RGB image path for offline", default=None)
     parser.add_argument("--depth", help="Depth image path for offline", default=None)
     parser.add_argument("--model", default=None, help="YOLO model path (defaults to bundled best.pt when present)")
+    parser.add_argument("--backbone", choices=["light", "heavy"], default="heavy", help="Point-cloud re-id backbone")
     parser.add_argument("--intrinsics", nargs=4, type=float, metavar=("fx", "fy", "cx", "cy"), default=[525.0, 525.0, 319.5, 239.5])
     parser.add_argument("--threshold", type=float, default=0.3)
     parser.add_argument("--margin-guard", type=float, default=0.05)
@@ -226,7 +227,7 @@ def main():
         fps_points=args.fps_points,
         depth_gate_k=args.depth_gate_k,
     )
-    embedder = PointReID(preprocess_config=preprocess_cfg)
+    embedder = PointReID(preprocess_config=preprocess_cfg, model_name=args.backbone)
     gallery = Gallery(default_threshold=args.threshold, margin_guard=args.margin_guard)
     tracker = Tracker(alpha=0.5, smooth_window=args.smooth_window)
     db = IdentityDB()
