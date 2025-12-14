@@ -20,6 +20,125 @@ from src.pc_preprocess import _get_o3d
 DEFAULT_DENY = "low_confidence_cloud"
 
 
+class AntiSpoofScorer:
+    """Detect spoofed/planar/background-only point clouds.
+
+    Uses a tiny pointnet classifier when weights are provided; otherwise falls
+    back to heuristic cues derived from covariance eigenvalues and depth spread.
+    """
+
+    def __init__(self, config: AntiSpoofConfig):
+        self.config = config
+        self.model = None
+        self.torch = None
+        if self.config.model_path is not None and Path(self.config.model_path).exists():
+            try:
+                import torch
+                import torch.nn as nn
+            except Exception:  # pragma: no cover - torch might be unavailable
+                self.model = None
+                return
+
+            class TinyPointnet(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.conv1 = nn.Conv1d(3, 32, 1)
+                    self.conv2 = nn.Conv1d(32, 64, 1)
+                    self.conv3 = nn.Conv1d(64, 128, 1)
+                    self.head = nn.Sequential(
+                        nn.Linear(128, 64),
+                        nn.ReLU(),
+                        nn.Linear(64, 1),
+                        nn.Sigmoid(),
+                    )
+
+                def forward(self, x):
+                    x = torch.relu(self.conv1(x))
+                    x = torch.relu(self.conv2(x))
+                    x = torch.relu(self.conv3(x))
+                    x = torch.max(x, dim=2)[0]
+                    return self.head(x)
+
+            self.torch = torch
+            self.model = TinyPointnet()
+            state = torch.load(self.config.model_path, map_location="cpu")
+            missing, unexpected = self.model.load_state_dict(state, strict=False)
+            if missing or unexpected:  # pragma: no cover - logging only
+                print(f"[anti-spoof] Loaded with missing={missing} unexpected={unexpected}")
+            self.model.eval()
+
+    @staticmethod
+    def _covariance_features(points: np.ndarray, stats: Dict[str, float]) -> None:
+        if points.shape[0] < 3:
+            stats.update({
+                "anisotropy": 0.0,
+                "linearity": 0.0,
+                "omnivariance": 0.0,
+                "depth_std": 0.0,
+            })
+            return
+        centered = points - points.mean(axis=0)
+        cov = np.cov(centered.T)
+        eigvals, _ = np.linalg.eigh(cov)
+        eigvals = np.clip(np.sort(eigvals), 1e-8, None)
+        l1, l2, l3 = eigvals  # ascending
+        anisotropy = float((l3 - l1) / (l3 + 1e-6))
+        linearity = float((l3 - l2) / (l3 + 1e-6))
+        omnivariance = float((l1 * l2 * l3) ** (1 / 3))
+        depth_std = float(np.std(points[:, 2]))
+        stats.update({
+            "eig_min": float(l1),
+            "eig_mid": float(l2),
+            "eig_max": float(l3),
+            "anisotropy": anisotropy,
+            "linearity": linearity,
+            "omnivariance": omnivariance,
+            "depth_std": depth_std,
+        })
+
+    @staticmethod
+    def _heuristic_score(points: np.ndarray, stats: Dict[str, float]) -> float:
+        if points.shape[0] < 8:
+            return 0.0
+        extent_x, extent_y, extent_z = stats.get("extent_x", 0.0), stats.get("extent_y", 0.0), stats.get("extent_z", 0.0)
+        aspect = stats.get("aspect", 1.0)
+        planarity = stats.get("planarity", 1.0)
+        anisotropy = stats.get("anisotropy", 0.0)
+        depth_std = stats.get("depth_std", 0.0)
+        thickness = extent_z / (np.sqrt(extent_x * extent_y) + 1e-6)
+        planar_penalty = max(0.0, 1.0 - planarity * 8)
+        aspect_reward = max(0.0, 1.0 - abs(aspect - 1.5) * 0.2)
+        depth_reward = min(1.0, depth_std * 25)
+        thickness_reward = min(1.0, thickness * 12)
+        anisotropy_reward = max(0.0, min(1.0, anisotropy))
+        score = (
+            0.15 * aspect_reward
+            + 0.25 * depth_reward
+            + 0.25 * thickness_reward
+            + 0.25 * anisotropy_reward
+            + 0.1 * (1 - planar_penalty)
+        )
+        return float(np.clip(score, 0.0, 1.0))
+
+    def score(self, points: np.ndarray, stats: Dict[str, float]) -> float:
+        if points.size == 0:
+            return 0.0
+        self._covariance_features(points, stats)
+        if self.model is not None and self.torch is not None:
+            with self.torch.no_grad():
+                pc = self.torch.from_numpy(points.T).unsqueeze(0).float()
+                pred = self.model(pc)
+                return float(pred.squeeze().item())
+        return self._heuristic_score(points, stats)
+
+
+@dataclass
+class AntiSpoofConfig:
+    enabled: bool = False
+    threshold: float = 0.6
+    model_path: Optional[Path] = None
+
+
 @dataclass
 class BirdExtractorConfig:
     depth_gate_k: float = 2.5
@@ -32,6 +151,7 @@ class BirdExtractorConfig:
     quality_floor: float = 0.2
     allow_planar_override: bool = False
     use_mask: bool = False
+    anti_spoof: AntiSpoofConfig = field(default_factory=AntiSpoofConfig)
     debug_dir: Optional[Path] = None
 
 
@@ -46,6 +166,7 @@ class BirdCloudResult:
 class BirdPointCloudExtractor:
     def __init__(self, config: Optional[BirdExtractorConfig] = None):
         self.cfg = config or BirdExtractorConfig()
+        self.anti_spoof = AntiSpoofScorer(self.cfg.anti_spoof)
         if self.cfg.debug_dir:
             self.cfg.debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -120,6 +241,7 @@ class BirdPointCloudExtractor:
             "compactness": compactness,
             "aspect": aspect,
             "planarity": planarity,
+            "depth_std": float(np.std(points[:, 2])),
         }
 
     def _quality(self, points: np.ndarray, stats: Dict[str, float]) -> Tuple[float, Optional[str]]:
@@ -165,6 +287,11 @@ class BirdPointCloudExtractor:
         shape = self._shape_stats(clustered)
         stats.update(shape)
         quality, deny = self._quality(clustered, stats)
+        if self.cfg.anti_spoof.enabled and deny is None:
+            spoof_score = self.anti_spoof.score(clustered, stats)
+            stats["anti_spoof_score"] = spoof_score
+            if spoof_score < self.cfg.anti_spoof.threshold:
+                deny = "spoof_background"
         result = BirdCloudResult(points=clustered.astype(np.float32), quality=quality, stats=stats, deny_reason=deny)
         if self.cfg.debug_dir is not None:
             idx = len(list(self.cfg.debug_dir.glob("frame_*.json")))
@@ -173,4 +300,9 @@ class BirdPointCloudExtractor:
         return result
 
 
-__all__ = ["BirdPointCloudExtractor", "BirdCloudResult", "BirdExtractorConfig"]
+__all__ = [
+    "BirdPointCloudExtractor",
+    "BirdCloudResult",
+    "BirdExtractorConfig",
+    "AntiSpoofConfig",
+]

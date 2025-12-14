@@ -18,7 +18,7 @@ from src.naming import generate_name
 from src.db import IdentityDB
 from src.output_schema import format_detection
 from src.pc_preprocess import PreprocessConfig
-from src.bird_point_extractor import BirdPointCloudExtractor, BirdExtractorConfig
+from src.bird_point_extractor import AntiSpoofConfig, BirdPointCloudExtractor, BirdExtractorConfig
 
 
 def parse_args():
@@ -42,6 +42,9 @@ def parse_args():
     parser.add_argument("--use-bird-extractor", action="store_true", help="Enable depth bird-only extractor")
     parser.add_argument("--bird-cluster-radius", type=float, default=0.02)
     parser.add_argument("--bird-min-points", type=int, default=64)
+    parser.add_argument("--enable-anti-spoof", action="store_true", help="Reject planar/background point clouds")
+    parser.add_argument("--anti-spoof-threshold", type=float, default=0.6, help="Threshold for anti-spoof score")
+    parser.add_argument("--anti-spoof-model", type=Path, default=None, help="Optional TinyPointNet weights for anti-spoofing")
     parser.add_argument("--smooth-window", type=int, default=5)
     return parser.parse_args()
 
@@ -273,6 +276,11 @@ def main():
                 cluster_radius=args.bird_cluster_radius,
                 min_cluster_points=args.bird_min_points,
                 debug_dir=debug_dir,
+                anti_spoof=AntiSpoofConfig(
+                    enabled=args.enable_anti_spoof,
+                    threshold=args.anti_spoof_threshold,
+                    model_path=args.anti_spoof_model,
+                ),
             )
         )
 
