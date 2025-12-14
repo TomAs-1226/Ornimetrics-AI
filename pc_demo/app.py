@@ -21,7 +21,7 @@ from src.gallery import Gallery
 from src.pc_preprocess import PreprocessConfig
 from src.reid_embedder import PointReID
 from src.tracker import Tracker
-from src.yolo_detect import YOLODetector
+from src.yolo_detect import YOLODetector, default_yolo_model_path
 
 LOGGER = logging.getLogger(__name__)
 
@@ -163,9 +163,9 @@ def main() -> None:
 
     species = st.text_input("Species label", value="sparrow")
     use_yolo = st.checkbox("Use YOLO detection if available", value=True)
-    override_class = st.checkbox("Override YOLO class with species input", value=True)
+    override_class = st.checkbox("Override YOLO class with species input", value=False)
     bbox_inputs = st.text_input("Manual bbox x1,y1,x2,y2 (optional)", value="")
-    model_path = st.text_input("YOLO model path", value="yolov8n.pt")
+    model_path = st.text_input("YOLO model path", value=default_yolo_model_path())
 
     intrinsics_cols = st.columns(4)
     fx = intrinsics_cols[0].number_input("fx", value=525.0)

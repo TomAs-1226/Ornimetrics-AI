@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument("--camera", default=None, help="Camera index or 'demo'")
     parser.add_argument("--rgb", help="RGB image path for offline", default=None)
     parser.add_argument("--depth", help="Depth image path for offline", default=None)
-    parser.add_argument("--model", default="yolov8n.pt")
+    parser.add_argument("--model", default=None, help="YOLO model path (defaults to bundled best.pt when present)")
     parser.add_argument("--intrinsics", nargs=4, type=float, metavar=("fx", "fy", "cx", "cy"), default=[525.0, 525.0, 319.5, 239.5])
     parser.add_argument("--threshold", type=float, default=0.3)
     parser.add_argument("--margin-guard", type=float, default=0.05)

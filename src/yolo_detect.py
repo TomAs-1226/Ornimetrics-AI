@@ -1,9 +1,26 @@
+import os
 from typing import List, Dict, Any
 import cv2
 try:
     from ultralytics import YOLO
 except Exception:  # pragma: no cover - allow import without ultralytics installed
     YOLO = None
+
+
+WINDOWS_DEFAULT_MODEL = (
+    r"C:\\Users\\User\\Downloads\\Ornimetrics-AI-codex-implement-individual-identification-pipeline"
+    r"\\Ornimetrics-AI-codex-implement-individual-identification-pipeline\\best.pt"
+)
+
+
+def default_yolo_model_path(fallback: str = "yolov8n.pt") -> str:
+    """Return the hardcoded Windows model path when present, otherwise fallback.
+
+    This keeps the demo aligned with the user's trained model while remaining
+    portable in other environments.
+    """
+
+    return WINDOWS_DEFAULT_MODEL if os.path.exists(WINDOWS_DEFAULT_MODEL) else fallback
 
 
 class YOLODetector:
@@ -13,10 +30,11 @@ class YOLODetector:
     Identity is handled separately by the point-cloud re-id stack.
     """
 
-    def __init__(self, model_path: str = "yolov8n.pt", device: str = None):
+    def __init__(self, model_path: str = None, device: str = None):
         if YOLO is None:
             raise ImportError("ultralytics not available; install per requirements.txt")
-        self.model = YOLO(model_path)
+        model_to_load = model_path or default_yolo_model_path()
+        self.model = YOLO(model_to_load)
         if device:
             self.model.to(device)
 
