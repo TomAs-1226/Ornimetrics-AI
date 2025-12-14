@@ -9,4 +9,5 @@ __all__ = [
     "embedding_baseline",
     "embedding_tflite",
     "sync",
+    "firebase_logger",
 ]

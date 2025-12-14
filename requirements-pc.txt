@@ -1,0 +1,7 @@
+numpy
+streamlit
+Pillow
+opencv-python
+google-cloud-storage
+google-cloud-firestore
+open3d

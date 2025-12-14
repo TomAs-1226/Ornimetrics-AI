@@ -50,6 +50,21 @@ Each emitted line corresponds to a tracklet summary:
 }
 ```
 
+## PC upload demo
+For quick testing on a PC with file uploads instead of live cameras, use the
+Streamlit app:
+
+```bash
+pip install -r requirements-pc.txt
+streamlit run pc_demo/app.py
+```
+
+Upload an RGB image and either a depth PNG/NPY or a point cloud (PLY/PCD) to run
+the same validation, matching, enrollment, cooldown, and decision logic. The UI
+can seed a known bird, force enrollment, and shows debug overlays for bbox and
+depth. Firebase uploads are enabled when `GOOGLE_APPLICATION_CREDENTIALS` is set
+and the Google Cloud packages are installed.
+
 ### Enrollment/dispense behavior
 - Depth must pass anti-spoof validation; otherwise we DENY with
   `invalid_depth_or_spoof`.

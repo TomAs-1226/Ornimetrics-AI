@@ -1,0 +1,234 @@
+"""Streamlit PC demo for BirdID using uploaded files."""
+from __future__ import annotations
+
+import base64
+import io
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+import streamlit as st
+
+from birdid.decision import decide
+from birdid.embedding_baseline import compute_baseline_embedding
+from birdid.engine import BirdIDConfig, Calibration
+from birdid.inputs.file_adapter import build_inputs
+from birdid.db import BirdIDDatabase, MatchResult
+from birdid.segment import DepthSegmenter
+from birdid.validate_3d import validate_tracklet
+from birdid.firebase_logger import is_available as firebase_available, upload_artifacts
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _get_engine_config() -> BirdIDConfig:
+    cfg = BirdIDConfig()
+    cfg.min_frames = 1
+    cfg.aggregate_stride = 1
+    cfg.min_frames_for_dispense = 1
+    return cfg
+
+
+def _overlay_bbox(rgb: np.ndarray, bbox) -> bytes:
+    try:
+        import cv2  # type: ignore
+    except Exception:
+        return _to_png(rgb)
+    x1, y1, x2, y2 = map(int, bbox)
+    img = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    _, buf = cv2.imencode(".png", img)
+    return bytes(buf)
+
+
+def _render_depth_stats(depth: np.ndarray, mask: np.ndarray) -> str:
+    if mask.sum() == 0:
+        return "No valid depth"
+    vals = depth[mask]
+    return f"depth mean={vals.mean():.3f} m, std={vals.std():.3f}, min={vals.min():.3f}, max={vals.max():.3f}"
+
+
+def _compute_embedding(embedder, depth: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    emb = embedder(depth, mask)
+    return emb / (np.linalg.norm(emb) + 1e-8)
+
+
+def run_pipeline(
+    cfg: BirdIDConfig,
+    db: BirdIDDatabase,
+    embedder,
+    species: str,
+    detection,
+    depth_frame,
+    bbox,
+    simulate_known: bool,
+    force_enroll: bool,
+) -> tuple[dict, Optional[np.ndarray]]:
+    calib = Calibration()
+    segmenter = DepthSegmenter(min_valid_ratio=cfg.min_valid_ratio)
+    x1, y1, x2, y2 = calib.map_bbox(bbox, depth_frame.depth.shape)
+    depth_crop = depth_frame.depth[y1 : y2 + 1, x1 : x2 + 1]
+    valid_crop = depth_frame.valid[y1 : y2 + 1, x1 : x2 + 1]
+    depth_clean, mask = segmenter.segment(depth_crop, valid_crop)
+    validation = validate_tracklet([(depth_clean, mask)], cfg)
+    if mask.sum() == 0:
+        embedding = np.zeros(1, dtype=np.float32)
+    else:
+        embedding = _compute_embedding(embedder, depth_clean, mask)
+
+    # Optionally seed a known prototype using the uploaded embedding.
+    if simulate_known and not db.get_prototypes(species):
+        db.add_individual(species, embedding)
+
+    match: MatchResult
+    if force_enroll:
+        match = MatchResult(None, float("inf"), 0.0, float("inf"), False, False)
+    else:
+        match = db.match(species, embedding, cfg.cosine_threshold)
+
+    if validation.is_valid and match.individual_id is not None and match.is_match:
+        db.update_prototype(match.individual_id, embedding, cfg.ema, cfg.max_prototypes)
+
+    decision = decide(
+        species=species,
+        track_id=int(detection.get("track_id", 1)),
+        embedding=embedding,
+        match=match,
+        validation=validation,
+        frames_used=1,
+        config=cfg,
+        db=db,
+        now_ts=time.time(),
+    )
+
+    result = {
+        "species": species,
+        "track_id": detection.get("track_id"),
+        "individual_id": decision.individual_id,
+        "decision": decision.decision,
+        "deny_reason": decision.deny_reason,
+        "min_dist": match.distance,
+        "second_best_dist": match.second_best,
+        "margin": decision.margin,
+        "quality_score": validation.quality_score,
+        "frames_used": 1,
+        "cooldown_remaining": decision.cooldown_remaining,
+    }
+    return result, depth_clean if mask.size else None
+
+
+def _to_png(rgb: np.ndarray) -> bytes:
+    try:
+        from PIL import Image  # type: ignore
+    except Exception:
+        return b""
+    img = Image.fromarray(rgb.astype(np.uint8))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def main() -> None:
+    st.title("BirdID PC Demo")
+    st.write("Upload an RGB image and depth/point cloud to run the BirdID pipeline.")
+
+    cfg = _get_engine_config()
+    embedder = compute_baseline_embedding
+    db_path = Path(st.session_state.get("birdid_db_path", ".pc_demo.sqlite"))
+    st.session_state["birdid_db_path"] = str(db_path)
+    db = BirdIDDatabase(db_path)
+
+    species = st.text_input("Species", value="sparrow")
+    simulate_known = st.checkbox("Simulate known bird (seed DB if empty)", value=False)
+    force_enroll = st.checkbox("Force enroll (ignore matches)", value=False)
+    show_debug = st.checkbox("Show debug visuals", value=True)
+
+    rgb_file = st.file_uploader("RGB image", type=["png", "jpg", "jpeg"])
+    depth_file = st.file_uploader("Depth / point cloud", type=["png", "jpg", "jpeg", "npy", "ply", "pcd"])
+
+    bbox_inputs = st.text_input("BBox x1,y1,x2,y2 (optional)", value="")
+    bbox: Optional[list[float]] = None
+    if bbox_inputs.strip():
+        try:
+            parts = [float(p) for p in bbox_inputs.split(",")]
+            if len(parts) == 4:
+                bbox = parts
+        except Exception:
+            st.warning("Invalid bbox format; using full image")
+
+    if st.button("Run BirdID"):
+        if rgb_file is None or depth_file is None:
+            st.error("Please upload both RGB and depth/point cloud files.")
+            return
+        try:
+            inputs = build_inputs(rgb_file, depth_file, species=species, bbox_xyxy=bbox)
+        except Exception as exc:
+            st.error(f"Failed to parse inputs: {exc}")
+            return
+
+        result, depth_clean = run_pipeline(
+            cfg=cfg,
+            db=db,
+            embedder=embedder,
+            species=species,
+            detection=inputs.detection,
+            depth_frame=inputs.depth_frame,
+            bbox=inputs.bbox_xyxy,
+            simulate_known=simulate_known,
+            force_enroll=force_enroll,
+        )
+
+        st.subheader("Decision")
+        st.json(result)
+        st.write(
+            f"Quality score: {result['quality_score']:.3f} | min_dist: {result['min_dist']:.3f} | margin: {result['margin']:.3f}"
+        )
+
+        if show_debug:
+            st.subheader("Debug")
+            st.image(inputs.rgb, caption="RGB input")
+            overlay_bytes = _overlay_bbox(inputs.rgb, inputs.bbox_xyxy)
+            if overlay_bytes:
+                st.image(io.BytesIO(overlay_bytes), caption="RGB + bbox")
+            if depth_clean is not None:
+                st.write(_render_depth_stats(depth_clean, depth_clean > 0))
+                st.image(depth_clean, caption="Depth crop", clamp=True)
+            if inputs.point_cloud is not None:
+                st.write(f"Point cloud points: {inputs.point_cloud.shape[0]}")
+
+        if firebase_available():
+            run_id = base64.urlsafe_b64encode(os.urandom(6)).decode("utf-8")
+            metadata = {**result, "run_id": run_id, "timestamp": time.time()}
+            image_bytes = _to_png(inputs.rgb)
+            pc_bytes = None
+            if inputs.point_cloud is not None:
+                try:
+                    import open3d as o3d  # type: ignore
+                    import tempfile
+
+                    pc = o3d.geometry.PointCloud()
+                    pc.points = o3d.utility.Vector3dVector(inputs.point_cloud)
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ply")
+                    try:
+                        o3d.io.write_point_cloud(tmp.name, pc)
+                        tmp.seek(0)
+                        pc_bytes = Path(tmp.name).read_bytes()
+                    finally:
+                        tmp.close()
+                        Path(tmp.name).unlink(missing_ok=True)
+                except Exception:
+                    pc_bytes = None
+            upload_artifacts(image_bytes, pc_bytes, metadata)
+        else:
+            st.info("Firebase credentials not detected; running in local-only mode.")
+
+    st.caption("Run `streamlit run pc_demo/app.py` to launch this UI.")
+
+
+if __name__ == "__main__":
+    main()
+
