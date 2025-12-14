@@ -63,6 +63,8 @@ class BirdIDConfig:
     refresh_days: int = 7
     refresh_confidence_threshold: float = 0.65
     refresh_quality_min: float = 0.4
+    tflite_model_path: str = "birdid/model/embedding.tflite"
+    tflite_input_size: int = 96
 
     @classmethod
     def from_file(cls, path: str) -> "BirdIDConfig":
@@ -116,6 +118,8 @@ class BirdIDConfig:
             refresh_days=int(_get("matching", "refresh_days", default=7)),
             refresh_confidence_threshold=float(_get("matching", "refresh_confidence_threshold", default=0.65)),
             refresh_quality_min=float(_get("matching", "refresh_quality_min", default=0.4)),
+            tflite_model_path=str(_get("matching", "tflite_model_path", default="birdid/model/embedding.tflite")),
+            tflite_input_size=int(_get("matching", "tflite_input_size", default=96)),
         )
 
 
@@ -186,7 +190,18 @@ class Calibration:
 class BirdIDEngine:
     def __init__(self, config: Optional[BirdIDConfig] = None, embedder: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None, db_path: str = "birdid.sqlite"):
         self.config = config or BirdIDConfig()
-        self.embedder = embedder or embedding_baseline.compute_baseline_embedding
+        if embedder is None:
+            from .embedding_tflite import load_embedder
+
+            self.embedder, self.embedder_backend, self.embedder_path = load_embedder(
+                model_dir=Path(self.config.tflite_model_path).parent,
+                model_name=Path(self.config.tflite_model_path).name,
+                input_size=self.config.tflite_input_size,
+            )
+        else:
+            self.embedder = embedder
+            self.embedder_backend = "custom"
+            self.embedder_path = None
         self.db = BirdIDDatabase(db_path)
         self.segmenter = DepthSegmenter(min_valid_ratio=self.config.min_valid_ratio)
         self.calib = Calibration()
@@ -294,6 +309,10 @@ class BirdIDEngine:
         species = buf.species
         selected_masks = buf.top_depth_masks(self.config.best_k_frames)
         validation = validate_tracklet(selected_masks, self.config)
+        prototypes = self.db.get_prototypes(species)
+        from .matching import topk_matches
+
+        neighbors = topk_matches(agg, prototypes, k=5) if prototypes else []
         match = self.db.match(species, agg, self.config.cosine_threshold)
         now_ts = time.time()
         if match.individual_id is not None:
@@ -336,6 +355,8 @@ class BirdIDEngine:
             "deny_reason": decision.deny_reason,
             "cooldown_remaining": decision.cooldown_remaining,
             "roi_debug": buf.detections[-1].get("roi_metrics", {}),
+            "neighbors": [n.__dict__ for n in neighbors],
+            "embedder_backend": getattr(self, "embedder_backend", "baseline"),
         }
         LOGGER.info("birdid_decision", extra={"decision": result})
         return result

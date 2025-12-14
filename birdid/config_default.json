@@ -28,7 +28,9 @@
     "max_prototypes": 20,
     "refresh_days": 7,
     "refresh_confidence_threshold": 0.65,
-    "refresh_quality_min": 0.4
+    "refresh_quality_min": 0.4,
+    "tflite_model_path": "birdid/model/embedding.tflite",
+    "tflite_input_size": 96
   },
     "validation": {
       "min_points": 150,

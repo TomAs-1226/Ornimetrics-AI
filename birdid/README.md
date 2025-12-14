@@ -89,6 +89,11 @@ Tracklets keep per-frame quality and aggregate the best frames so partially visi
 ### Weekly refresh policy
 Each individual tracks `last_seen_ts` and `last_refresh_ts`. If a bird is re-matched after `matching.refresh_days` (default 7) with confidence above `matching.refresh_confidence_threshold` and quality above `matching.refresh_quality_min`, its prototype is refreshed with EMA to keep identities current without drift.
 
+### Training BirdID embeddings
+- Default runtime uses the TFLite embedding model at `birdid/model/embedding.tflite` when present (quantized MobileNet-style 2.5D depth+mask input). If the model is missing, the deterministic baseline embedding remains as a fallback.
+- Collect weakly supervised crops from tracklets on the Pi using `birdid/training/collect_dataset.py`, then train on a PC with `birdid/training/train_embedding.py` (placeholder for your preferred framework) and export an int8 TFLite file with `birdid/training/export_tflite.py`.
+- Deploy the exported file back to the Pi at `birdid/model/embedding.tflite` and restart; the engine/PC demo will automatically pick it up and surface the active backend in logs/UI.
+
 ### Migration note
 Existing SQLite databases gain additional columns (`last_seen_ts`,
 `last_refresh_ts`, prototype `created_ts`) plus the `individual_stats` table the

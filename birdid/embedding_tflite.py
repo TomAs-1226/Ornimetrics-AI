@@ -19,6 +19,8 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 class TFLiteEmbedder:
+    """Wrapper around a lightweight TFLite embedding model."""
+
     def __init__(self, model_path: str, input_size: int = 96):
         self.model_path = Path(model_path)
         self.input_size = input_size
@@ -51,6 +53,8 @@ class TFLiteEmbedder:
 
     def embed(self, depth: np.ndarray, mask: np.ndarray) -> np.ndarray:
         if self._interp is None:
+            # When running on a PC without tflite-runtime, still produce a
+            # deterministic embedding so the rest of the pipeline can be tested.
             return self._fallback(depth, mask)
         input_data = self._preprocess(depth, mask)[None, ...]
         input_details = self._interp.get_input_details()[0]
@@ -60,3 +64,23 @@ class TFLiteEmbedder:
         vec = self._interp.get_tensor(output_details["index"]).astype(np.float32).ravel()
         norm = np.linalg.norm(vec) + 1e-8
         return vec / norm
+
+
+def load_embedder(model_dir: str | Path = "birdid/model", model_name: str = "embedding.tflite", input_size: int = 96):
+    """
+    Load the preferred embedding backend.
+
+    Returns a tuple (embed_fn, backend_name, model_path). Falls back to the
+    deterministic baseline embedding when the TFLite runtime or model file is
+    missing so that the rest of the pipeline keeps working on Pi and PC.
+    """
+
+    from .embedding_baseline import compute_baseline_embedding
+
+    model_path = Path(model_dir) / model_name
+    if Interpreter is None or not model_path.exists():
+        return compute_baseline_embedding, "baseline", model_path
+    embedder = TFLiteEmbedder(str(model_path), input_size=input_size)
+    if embedder._interp is None:
+        return compute_baseline_embedding, "baseline", model_path
+    return embedder.embed, "tflite", model_path

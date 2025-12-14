@@ -110,6 +110,7 @@ def run_pipeline(
     cfg: BirdIDConfig,
     db: BirdIDDatabase,
     embedder,
+    embedder_backend: str,
     species: str,
     detection,
     depth_frame,
@@ -146,6 +147,10 @@ def run_pipeline(
     if simulate_known and not db.get_prototypes(species):
         db.add_individual(species, embedding)
 
+    prototypes = db.get_prototypes(species)
+    from birdid.matching import topk_matches
+
+    neighbors = topk_matches(embedding, prototypes, k=5) if prototypes else []
     match: MatchResult
     if force_enroll:
         match = MatchResult(None, float("inf"), 0.0, float("inf"), False, False)
@@ -195,6 +200,10 @@ def run_pipeline(
             "percent_valid_depth": float(valid_crop.mean()) if valid_crop.size else 0.0,
         },
         "diagnostics": validation.diagnostics,
+        "neighbors": [n.__dict__ for n in neighbors],
+        "embedding_norm": float(np.linalg.norm(embedding)) if embedding.size else 0.0,
+        "embedding_checksum": float(embedding[:4].sum()) if embedding.size else 0.0,
+        "embedder_backend": embedder_backend,
     }
     return result, depth_clean if mask.size else None
 
@@ -215,10 +224,18 @@ def main() -> None:
     st.write("Upload an RGB image and depth/point cloud to run the BirdID pipeline.")
 
     cfg = _get_engine_config()
-    embedder = compute_baseline_embedding
+    from birdid.embedding_tflite import load_embedder
+
+    embedder, embedder_backend, model_path = load_embedder(
+        model_dir=Path(cfg.tflite_model_path).parent,
+        model_name=Path(cfg.tflite_model_path).name,
+        input_size=cfg.tflite_input_size,
+    )
     db_path = Path(st.session_state.get("birdid_db_path", ".pc_demo.sqlite"))
     st.session_state["birdid_db_path"] = str(db_path)
     db = BirdIDDatabase(db_path)
+
+    st.info(f"Embedding backend: {embedder_backend} ({model_path})")
 
     species = st.text_input("Species", value="sparrow")
     auto_species = st.checkbox("Auto-detect species with best.pt (if available)", value=True)
@@ -273,6 +290,7 @@ def main() -> None:
             cfg=cfg,
             db=db,
             embedder=embedder,
+            embedder_backend=embedder_backend,
             species=species,
             detection=inputs.detection,
             depth_frame=inputs.depth_frame,
@@ -287,6 +305,14 @@ def main() -> None:
         st.write(
             f"Quality score: {result['quality_score']:.3f} | min_dist: {result['min_dist']:.3f} | margin: {result['margin']:.3f}"
         )
+        with st.expander("Similarity Debug", expanded=True):
+            st.write(f"Embedding backend: {result.get('embedder_backend', '?')}")
+            st.write(f"Embedding norm: {result.get('embedding_norm', 0):.4f} | checksum: {result.get('embedding_checksum', 0):.4f}")
+            neighbors = result.get("neighbors", [])
+            if neighbors:
+                st.table({"individual_id": [n["individual_id"] for n in neighbors], "distance": [n["distance"] for n in neighbors]})
+            else:
+                st.write("No stored prototypes for this species yet.")
         with st.expander("ROI Debug", expanded=False):
             roi_dbg = result.get("roi_debug", {})
             st.write(
