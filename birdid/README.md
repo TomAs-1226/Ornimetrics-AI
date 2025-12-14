@@ -14,8 +14,8 @@ DFRobot CS20 depth-only ToF camera alongside an RGB+YOLO detector.
 - CLI demo for live (stdin JSON) and recorded (synthetic) modes.
 
 ## Setup
-1. Install Python dependencies: `pip install numpy` (and `tflite-runtime` if
-   using the TFLite embedder).
+1. Install Python dependencies: `pip install -r requirements.txt` (and
+   `tflite-runtime` if using the TFLite embedder).
 2. Install CS20 driver/SDK and ensure the depth device appears under
    `/dev/video*`.
 3. Calibrate RGB-to-depth mapping:
@@ -53,6 +53,8 @@ Each emitted line corresponds to a tracklet summary:
 ### Enrollment/dispense behavior
 - Depth must pass anti-spoof validation; otherwise we DENY with
   `invalid_depth_or_spoof`.
+- Validation now also checks plausible physical size at ~40 cm and rejects
+  stale depth frames that fall outside the configurable timestamp tolerance.
 - If a valid tracklet does not confidently match an existing individual it is
   ENROLLed with a new `individual_id` but does not dispense (unless
   `allow_first_seen_dispense=true`).

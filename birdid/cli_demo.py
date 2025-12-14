@@ -15,6 +15,7 @@ from typing import Iterable, List
 import numpy as np
 
 from .camera.cs20 import CS20Camera, DepthFrame
+from . import sync
 from .engine import BirdIDConfig, BirdIDEngine
 
 
@@ -44,13 +45,18 @@ def run_live(engine: BirdIDEngine) -> None:
     cam = CS20Camera(mode=engine.config.depth_mode)
     cam.start()
     try:
-        buffer = []
+        depth_buffer: List[DepthFrame] = []
         for line in sys.stdin:
             try:
                 det = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            depth_frame = cam.get_latest(timeout=0.05)
+            latest = cam.get_latest(timeout=0.05)
+            if latest is not None:
+                depth_buffer.append(latest)
+            depth_frame = sync.match_depth_frames(
+                det.get("timestamp", time.time()), depth_buffer, engine.config.timestamp_tolerance_ms / 1000.0
+            )
             if depth_frame is None:
                 continue
             res = engine.process_detection(det, depth_frame)
@@ -66,8 +72,9 @@ def run_recorded(engine: BirdIDEngine) -> None:
     detections = list(_simulate_detections())
     depth_frames = _simulate_depth_frames()
     for det in detections:
-        # pick closest depth frame
-        closest = min(depth_frames, key=lambda f: abs(f.timestamp - det["timestamp"]))
+        closest = sync.match_depth_frames(det["timestamp"], depth_frames, engine.config.timestamp_tolerance_ms / 1000.0)
+        if closest is None:
+            continue
         res = engine.process_detection(det, closest)
         if res:
             print(json.dumps(res, indent=2))

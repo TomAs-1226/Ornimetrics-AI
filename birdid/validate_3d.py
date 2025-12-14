@@ -51,19 +51,34 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
     points = np.concatenate(points_list, axis=0)
     valid_ratio = valid_pixels / max(total_pixels, 1)
     thickness = float(points[:, 2].max() - points[:, 2].min())
-    planar_ratio = _compute_planarity(points)
+    depth_mean = float(points[:, 2].mean()) if points.size else 0.0
     centroid_jitter = 0.0
     if len(centroids) > 1:
         centroid_jitter = float(np.linalg.norm(np.std(np.stack(centroids, axis=0), axis=0)))
+
+    # Approximate physical size using normalized extent scaled by mean depth.
+    mask_stack = np.stack([m for _, m in depth_masks], axis=0)
+    size_ok = True
+    if mask_stack.any():
+        _, ys, xs = np.nonzero(mask_stack)
+        h, w = depth_masks[0][1].shape
+        width_norm = (xs.max() - xs.min() + 1) / max(w, 1)
+        height_norm = (ys.max() - ys.min() + 1) / max(h, 1)
+        approx_size_m = depth_mean * max(width_norm, height_norm)
+        if approx_size_m < config.validation_min_size_m or approx_size_m > config.validation_max_size_m:
+            size_ok = False
 
     if valid_ratio < config.validation_min_valid_ratio:
         return ValidationResult(False, 0.0, reason="insufficient_depth")
     if points.shape[0] < config.validation_min_points:
         return ValidationResult(False, 0.0, reason="too_few_points")
-    if planar_ratio < config.validation_planar_ratio:
-        return ValidationResult(False, 0.1, reason="planar_surface")
+    if not size_ok:
+        return ValidationResult(False, 0.2, reason="size_out_of_bounds")
     if thickness < config.validation_min_thickness or thickness > config.validation_max_thickness:
         return ValidationResult(False, 0.2, reason="thickness_out_of_bounds")
+    planar_ratio = _compute_planarity(points)
+    if planar_ratio < config.validation_planar_ratio:
+        return ValidationResult(False, 0.1, reason="planar_surface")
     if centroid_jitter > config.validation_max_centroid_jitter:
         return ValidationResult(False, 0.2, reason="centroid_instability")
 
@@ -72,5 +87,6 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
     thickness_score = max(0.0, min(1.0, (thickness - config.validation_min_thickness) / (config.validation_max_thickness - config.validation_min_thickness + 1e-6)))
     density_score = max(0.0, min(1.0, valid_ratio))
     stability_score = max(0.0, min(1.0, 1.0 - centroid_jitter / max(config.validation_max_centroid_jitter, 1e-6)))
-    quality = float(0.25 * (planar_score + thickness_score + density_score + stability_score))
+    size_score = 1.0 if size_ok else 0.0
+    quality = float(0.2 * (planar_score + thickness_score + density_score + stability_score + size_score))
     return ValidationResult(True, quality, reason=None)

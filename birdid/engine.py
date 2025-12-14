@@ -49,6 +49,8 @@ class BirdIDConfig:
     validation_max_thickness: float = 0.25
     validation_max_centroid_jitter: float = 0.04
     validation_min_valid_ratio: float = 0.25
+    validation_min_size_m: float = 0.04
+    validation_max_size_m: float = 0.28
 
     @classmethod
     def from_file(cls, path: str) -> "BirdIDConfig":
@@ -89,6 +91,8 @@ class BirdIDConfig:
             validation_max_thickness=float(_get("validation", "max_thickness", default=0.25)),
             validation_max_centroid_jitter=float(_get("validation", "max_centroid_jitter", default=0.04)),
             validation_min_valid_ratio=float(_get("validation", "min_valid_ratio", default=0.25)),
+            validation_min_size_m=float(_get("validation", "min_size_m", default=0.04)),
+            validation_max_size_m=float(_get("validation", "max_size_m", default=0.28)),
         )
 
 
@@ -173,6 +177,8 @@ class BirdIDEngine:
         bbox = detection.get("bbox_xyxy")
         if bbox is None:
             return None
+        if abs(depth_frame.timestamp - detection.get("timestamp", 0.0)) > self.config.timestamp_tolerance_ms / 1000.0:
+            return None
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
         if area < self.config.min_bbox_area or area > self.config.max_bbox_area:
             return None
@@ -182,7 +188,14 @@ class BirdIDEngine:
             return None
         embedding = self.embedder(depth_clean, mask)
         track_id = int(detection["track_id"])
-        buf = self.tracklets.setdefault(track_id, TrackletBuffer(species=detection["species"], track_id=track_id))
+        species = detection["species"]
+        buf = self.tracklets.get(track_id)
+        if buf and buf.species != species:
+            self._finalize(track_id)
+            buf = None
+        if buf is None:
+            buf = TrackletBuffer(species=species, track_id=track_id)
+            self.tracklets[track_id] = buf
         buf.add(detection, embedding, depth_clean, mask)
         if len(buf.embeddings) >= self.config.max_frames:
             buf.detections.pop(0)

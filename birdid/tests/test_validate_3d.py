@@ -13,4 +13,14 @@ def test_planar_surface_rejected():
     mask = np.ones_like(depth, dtype=bool)
     result = validate_tracklet([(depth, mask)], cfg)
     assert not result.is_valid
-    assert result.reason in {"planar_surface", "thickness_out_of_bounds"}
+    assert result.reason in {"planar_surface", "thickness_out_of_bounds", "size_out_of_bounds"}
+
+
+def test_size_out_of_bounds_rejected():
+    cfg = BirdIDConfig()
+    rng = np.random.RandomState(0)
+    depth = 0.4 + 0.02 * rng.rand(40, 40).astype(np.float32)
+    mask = np.ones_like(depth, dtype=bool)
+    result = validate_tracklet([(depth, mask)], cfg)
+    assert not result.is_valid
+    assert result.reason == "size_out_of_bounds"

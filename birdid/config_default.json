@@ -22,14 +22,16 @@
     "ema": 0.05,
     "max_prototypes": 20
   },
-  "validation": {
-    "min_points": 150,
-    "planar_ratio": 0.02,
-    "min_thickness": 0.01,
-    "max_thickness": 0.25,
-    "max_centroid_jitter": 0.04,
-    "min_valid_ratio": 0.25
-  },
+    "validation": {
+      "min_points": 150,
+      "planar_ratio": 0.02,
+      "min_thickness": 0.01,
+      "max_thickness": 0.25,
+      "max_centroid_jitter": 0.04,
+      "min_valid_ratio": 0.25,
+      "min_size_m": 0.04,
+      "max_size_m": 0.28
+    },
   "dispense": {
     "threshold": 0.32,
     "margin_threshold": 0.05,
