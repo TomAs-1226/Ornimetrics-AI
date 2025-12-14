@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 from birdid.decision import decide
 from birdid.embedding_baseline import compute_baseline_embedding
 from birdid.engine import BirdIDConfig, Calibration
-from birdid.inputs.file_adapter import build_inputs
+from birdid.inputs.file_adapter import build_inputs, load_rgb_image
 from birdid.db import BirdIDDatabase, MatchResult
 from birdid.segment import DepthSegmenter
 from birdid.validate_3d import validate_tracklet
@@ -30,6 +30,48 @@ from birdid.firebase_logger import is_available as firebase_available, upload_ar
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+@st.cache_resource
+def _load_yolo_model():
+    best_path = ROOT / "best.pt"
+    if not best_path.exists():
+        LOGGER.info("best.pt not found at %s; auto species disabled", best_path)
+        return None
+    try:
+        from ultralytics import YOLO  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        LOGGER.warning("ultralytics not installed; auto species disabled (%s)", exc)
+        return None
+    try:
+        return YOLO(str(best_path))
+    except Exception as exc:  # pragma: no cover - model load error
+        LOGGER.warning("Failed to load best.pt: %s", exc)
+        return None
+
+
+def _auto_detect_species(rgb: np.ndarray):
+    model = _load_yolo_model()
+    if model is None:
+        return None
+    try:
+        results = model.predict(rgb, verbose=False)
+    except Exception as exc:  # pragma: no cover - inference error
+        LOGGER.warning("Auto species prediction failed: %s", exc)
+        return None
+    if not results:
+        return None
+    res = results[0]
+    boxes = getattr(res, "boxes", None)
+    if boxes is None or len(boxes) == 0:
+        return None
+    confs = boxes.conf.cpu().numpy()
+    best_idx = int(np.argmax(confs))
+    xyxy = boxes.xyxy[best_idx].cpu().numpy().tolist()
+    cls_idx = int(boxes.cls[best_idx].item())
+    names = getattr(model, "names", getattr(res, "names", {}))
+    species = str(names.get(cls_idx, cls_idx))
+    return {"species": species, "bbox": xyxy, "conf": float(confs[best_idx])}
 
 
 def _get_engine_config() -> BirdIDConfig:
@@ -81,6 +123,10 @@ def run_pipeline(
     depth_crop = depth_frame.depth[y1 : y2 + 1, x1 : x2 + 1]
     valid_crop = depth_frame.valid[y1 : y2 + 1, x1 : x2 + 1]
     depth_clean, mask = segmenter.segment(depth_crop, valid_crop)
+    if mask.sum() == 0 and valid_crop.any():
+        LOGGER.info("Segmentation empty; using raw valid depth crop as fallback")
+        depth_clean = depth_crop.astype(np.float32, copy=False)
+        mask = valid_crop.astype(bool, copy=False)
     validation = validate_tracklet([(depth_clean, mask)], cfg)
     if mask.sum() == 0:
         embedding = np.zeros(1, dtype=np.float32)
@@ -150,6 +196,7 @@ def main() -> None:
     db = BirdIDDatabase(db_path)
 
     species = st.text_input("Species", value="sparrow")
+    auto_species = st.checkbox("Auto-detect species with best.pt (if available)", value=True)
     simulate_known = st.checkbox("Simulate known bird (seed DB if empty)", value=False)
     force_enroll = st.checkbox("Force enroll (ignore matches)", value=False)
     show_debug = st.checkbox("Show debug visuals", value=True)
@@ -172,7 +219,19 @@ def main() -> None:
             st.error("Please upload both RGB and depth/point cloud files.")
             return
         try:
-            inputs = build_inputs(rgb_file, depth_file, species=species, bbox_xyxy=bbox)
+            auto_detection = None
+            if auto_species:
+                auto_detection = _auto_detect_species(load_rgb_image(rgb_file))
+                if auto_detection:
+                    species = auto_detection["species"]
+                    bbox = auto_detection["bbox"]
+                    st.info(
+                        f"Auto species: {species} (conf={auto_detection['conf']:.2f}) | bbox={bbox}"
+                    )
+                else:
+                    st.info("Auto species unavailable; using manual inputs")
+            conf = auto_detection["conf"] if auto_detection else 0.9
+            inputs = build_inputs(rgb_file, depth_file, species=species, bbox_xyxy=bbox, conf=conf)
         except Exception as exc:
             st.error(f"Failed to parse inputs: {exc}")
             return

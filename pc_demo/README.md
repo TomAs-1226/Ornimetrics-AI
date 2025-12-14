@@ -20,9 +20,18 @@ Upload an RGB image plus one of:
 - Point cloud: `.ply` or `.pcd` (requires `open3d`)
 
 Controls allow setting species, optional bounding box, seeding a known bird, or
-forcing enrollment. The output panel shows the decision (DISPENSE/ENROLL/DENY),
-distances, quality score, and cooldown state. Debug panes render the RGB with
-bbox, depth crop stats, and point count.
+forcing enrollment. If `best.pt` exists in the repo root and `ultralytics` is
+installed, the demo can auto-detect species/bbox from the uploaded RGB image; a
+manual fallback is always available. The output panel shows the decision
+(DISPENSE/ENROLL/DENY), distances, quality score, and cooldown state. Debug
+panes render the RGB with bbox, depth crop stats (dtype/min/max/valid percent),
+and point count.
+
+Depth handling notes:
+- Depth PNGs are decoded with `cv2.IMREAD_UNCHANGED`; uint16 values are assumed
+  to be millimeters and converted to meters automatically.
+- If segmentation returns zero points, the pipeline falls back to the raw valid
+  depth crop to avoid erroneous `no_points` denials.
 
 ## Firebase (optional)
 
