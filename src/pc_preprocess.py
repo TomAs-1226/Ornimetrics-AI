@@ -1,6 +1,10 @@
+import os
 from dataclasses import dataclass
 from typing import Tuple, Optional, Dict
 import numpy as np
+
+# Force headless Open3D to avoid libGL issues in minimal environments
+os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
 import open3d as o3d
 
 DEFAULT_POINTS = 2048

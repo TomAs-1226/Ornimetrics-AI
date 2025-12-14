@@ -4,21 +4,32 @@ import torch.nn.functional as F
 
 
 class DGCNN(nn.Module):
-    def __init__(self, emb_dims: int = 256, k: int = 20):
+    def __init__(self, emb_dims: int = 256, k: int = 20, input_dims: int = 3):
         super().__init__()
         self.k = k
         self.emb_dims = emb_dims
+        self.input_dims = input_dims
+        edge_channels = 2 * input_dims
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)
         self.bn4 = nn.BatchNorm2d(256)
         self.bn5 = nn.BatchNorm1d(emb_dims)
 
-        self.conv1 = nn.Sequential(nn.Conv2d(6, 64, kernel_size=1, bias=False), self.bn1, nn.LeakyReLU(negative_slope=0.2))
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(edge_channels, 64, kernel_size=1, bias=False),
+            self.bn1,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
         self.conv2 = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1, bias=False), self.bn2, nn.LeakyReLU(negative_slope=0.2))
-        self.conv3 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=1, bias=False), self.bn3, nn.LeakyReLU(negative_slope=0.2))
+        self.conv3 = nn.Sequential(nn.Conv2d(128, 128, kernel_size=1, bias=False), self.bn3, nn.LeakyReLU(negative_slope=0.2))
         self.conv4 = nn.Sequential(nn.Conv2d(128, 256, kernel_size=1, bias=False), self.bn4, nn.LeakyReLU(negative_slope=0.2))
-        self.conv5 = nn.Sequential(nn.Conv1d(512, emb_dims, kernel_size=1, bias=False), self.bn5, nn.LeakyReLU(negative_slope=0.2))
+        # Concatenation of x1 (64 channels) and x2 (256 channels) -> 320
+        self.conv5 = nn.Sequential(
+            nn.Conv1d(320, emb_dims, kernel_size=1, bias=False),
+            self.bn5,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
 
     def get_graph_feature(self, x):
         batch_size = x.size(0)
