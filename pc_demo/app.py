@@ -12,6 +12,13 @@ from typing import Optional
 import numpy as np
 import streamlit as st
 
+# Ensure repository root is on sys.path when running via Streamlit or directly
+# so that `import birdid.*` works even if the package is not installed.
+import sys
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from birdid.decision import decide
 from birdid.embedding_baseline import compute_baseline_embedding
 from birdid.engine import BirdIDConfig, Calibration
