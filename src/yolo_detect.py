@@ -12,15 +12,25 @@ WINDOWS_DEFAULT_MODEL = (
     r"\\Ornimetrics-AI-codex-implement-individual-identification-pipeline\\best.pt"
 )
 
+WINDOWS_ROBUST_MODEL = (
+    r"C:\\Users\\User\\Downloads\\Ornimetrics-AI-codex-implement-robust-point-cloud-identity-system"
+    r"\\Ornimetrics-AI-codex-implement-robust-point-cloud-identity-system\\best.pt"
+)
+
+WINDOWS_MODEL_CANDIDATES = [WINDOWS_ROBUST_MODEL, WINDOWS_DEFAULT_MODEL]
+
 
 def default_yolo_model_path(fallback: str = "yolov8n.pt") -> str:
-    """Return the hardcoded Windows model path when present, otherwise fallback.
+    """Return a hardcoded Windows model path when present, otherwise fallback.
 
-    This keeps the demo aligned with the user's trained model while remaining
-    portable in other environments.
+    The search prioritizes the latest requested repository layout while keeping
+    compatibility with the prior default path and finally a portable fallback.
     """
 
-    return WINDOWS_DEFAULT_MODEL if os.path.exists(WINDOWS_DEFAULT_MODEL) else fallback
+    for candidate in WINDOWS_MODEL_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return fallback
 
 
 class YOLODetector:

@@ -96,6 +96,26 @@ def ensure_debug_dir():
     return path
 
 
+def save_debug_overlay(rgb, detections, debug_dir, frame_id=None):
+    if rgb is None or debug_dir is None:
+        return None
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    for det in detections:
+        bbox = det.get("bbox", [0, 0, 0, 0])
+        x1, y1, x2, y2 = [int(x) for x in bbox]
+        cv2.rectangle(bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cls = det.get("class_name", "")
+        action = det.get("action") or det.get("decision_state")
+        label_parts = [p for p in [cls, action] if p]
+        label = " | ".join(label_parts) if label_parts else cls
+        if label:
+            cv2.putText(bgr, label, (x1, max(y1 - 5, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+    frame_name = f"frame_{frame_id:04d}.jpg" if frame_id is not None else "frame.jpg"
+    out_path = debug_dir / frame_name
+    cv2.imwrite(str(out_path), bgr)
+    return out_path
+
+
 def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, decision, tracker_stats):
     sorted_scores = [
         {"id": s.get("id"), "dist": float(s.get("dist", 0.0)), "geometry": float(s.get("geometry", float("inf")))}
@@ -262,8 +282,11 @@ def process_frame(
     outputs = [format_detection(d) for d in tracked]
     if debug and debug_dir is not None:
         frame_id = len(list(debug_dir.glob("frame_*.json")))
+        overlay_path = save_debug_overlay(rgb, tracked, debug_dir, frame_id=frame_id)
         with open(debug_dir / f"frame_{frame_id:04d}.json", "w", encoding="utf-8") as f:
             json.dump(frame_debug, f, indent=2, default=lambda o: o if isinstance(o, (int, float, str)) else str(o))
+        if overlay_path is not None:
+            print(f"Saved debug overlay: {overlay_path}")
         print(json.dumps(frame_debug, indent=2))
     if return_debug:
         return outputs, frame_debug
