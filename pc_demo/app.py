@@ -116,6 +116,7 @@ def run_pipeline(
     bbox,
     simulate_known: bool,
     force_enroll: bool,
+    trusted_ply_input: bool,
 ) -> tuple[dict, Optional[np.ndarray]]:
     calib = Calibration()
     segmenter = DepthSegmenter(min_valid_ratio=cfg.min_valid_ratio)
@@ -129,7 +130,13 @@ def run_pipeline(
         LOGGER.info("Segmentation empty; using raw valid depth crop as fallback")
         depth_clean = depth_crop.astype(np.float32, copy=False)
         mask = valid_crop.astype(bool, copy=False)
-    validation = validate_tracklet([(depth_clean, mask)], cfg)
+    validation = validate_tracklet(
+        [(depth_clean, mask)],
+        cfg,
+        point_cloud=depth_frame.point_cloud,
+        trusted_ply_input=trusted_ply_input,
+        point_units=cfg.pointcloud_units,
+    )
     if mask.sum() == 0:
         embedding = np.zeros(1, dtype=np.float32)
     else:
@@ -187,6 +194,7 @@ def run_pipeline(
             "depth_shape": depth_crop.shape[:2],
             "percent_valid_depth": float(valid_crop.mean()) if valid_crop.size else 0.0,
         },
+        "diagnostics": validation.diagnostics,
     }
     return result, depth_clean if mask.size else None
 
@@ -216,6 +224,7 @@ def main() -> None:
     auto_species = st.checkbox("Auto-detect species with best.pt (if available)", value=True)
     simulate_known = st.checkbox("Simulate known bird (seed DB if empty)", value=False)
     force_enroll = st.checkbox("Force enroll (ignore matches)", value=False)
+    trusted_ply = st.checkbox("Trusted PLY input (skip planar spoof for uploads)", value=False)
     show_debug = st.checkbox("Show debug visuals", value=True)
 
     rgb_file = st.file_uploader("RGB image", type=["png", "jpg", "jpeg"])
@@ -248,7 +257,14 @@ def main() -> None:
                 else:
                     st.info("Auto species unavailable; using manual inputs")
             conf = auto_detection["conf"] if auto_detection else 0.9
-            inputs = build_inputs(rgb_file, depth_file, species=species, bbox_xyxy=bbox, conf=conf)
+            inputs = build_inputs(
+                rgb_file,
+                depth_file,
+                species=species,
+                bbox_xyxy=bbox,
+                conf=conf,
+                point_units=cfg.pointcloud_units,
+            )
         except Exception as exc:
             st.error(f"Failed to parse inputs: {exc}")
             return
@@ -263,6 +279,7 @@ def main() -> None:
             bbox=inputs.bbox_xyxy,
             simulate_known=simulate_known,
             force_enroll=force_enroll,
+            trusted_ply_input=trusted_ply,
         )
 
         st.subheader("Decision")
@@ -275,6 +292,14 @@ def main() -> None:
             st.write(
                 f"Depth shape: {roi_dbg.get('depth_shape', '?')} | percent valid depth: {roi_dbg.get('percent_valid_depth', 0):.3f}"
             )
+            diag = result.get("diagnostics", {})
+            if diag:
+                st.write(
+                    "Diagnostics: "
+                    f"scattering={diag.get('scattering', 0):.5f}, planarity_metric={diag.get('planarity_metric', 0):.5f}, "
+                    f"linearity={diag.get('linearity', 0):.5f}, thickness={diag.get('thickness', diag.get('planar_thickness', 0)):.4f}, "
+                    f"points={diag.get('points', 0):.0f}"
+                )
 
         if show_debug:
             st.subheader("Debug")

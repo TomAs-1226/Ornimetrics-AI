@@ -31,6 +31,7 @@ class DepthFrame:
     timestamp: float  # seconds since epoch
     depth: np.ndarray  # 2D depth map in meters
     valid: np.ndarray  # boolean mask same shape as depth
+    point_cloud: np.ndarray | None = None
 
 
 class CS20Camera:

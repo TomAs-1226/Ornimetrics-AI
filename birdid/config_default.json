@@ -38,7 +38,10 @@
       "max_centroid_jitter": 0.04,
       "min_valid_ratio": 0.25,
       "min_size_m": 0.04,
-      "max_size_m": 0.28
+      "max_size_m": 0.28,
+      "scattering_min": 0.002,
+      "planar_thickness_min": 0.006,
+      "pointcloud_units": "auto"
     },
   "dispense": {
     "threshold": 0.32,

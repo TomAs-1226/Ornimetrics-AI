@@ -25,7 +25,9 @@ installed, the demo can auto-detect species/bbox from the uploaded RGB image; a
 manual fallback is always available. The output panel shows the decision
 (DISPENSE/ENROLL/DENY), distances, quality score, and cooldown state. Debug
 panes render the RGB with bbox, depth crop stats (dtype/min/max/valid percent),
-and point count.
+point count, and PCA-derived diagnostics used for planar spoof rejection. A
+`Trusted PLY input` toggle lets you skip planar spoof denial for uploads when
+testing known-good point clouds on PC (kept strict by default).
 
 Depth handling notes:
 - Depth PNGs are decoded with `cv2.IMREAD_UNCHANGED`; uint16 values are assumed

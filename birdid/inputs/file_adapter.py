@@ -112,7 +112,21 @@ def _depth_from_npy(src) -> Tuple[np.ndarray, np.ndarray]:
     return _to_meters(data)
 
 
-def _depth_from_point_cloud(src, grid: Tuple[int, int] = (240, 320)) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _convert_point_units(points: np.ndarray, units: str = "auto") -> np.ndarray:
+    pts = points.astype(np.float32, copy=False)
+    if units == "m":
+        return pts
+    if units == "mm":
+        return pts / 1000.0
+    median_mag = float(np.nanmedian(np.linalg.norm(pts, axis=1))) if pts.size else 0.0
+    if median_mag > 10.0:
+        return pts / 1000.0
+    return pts
+
+
+def _depth_from_point_cloud(
+    src, grid: Tuple[int, int] = (240, 320), units: str = "auto"
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     try:
         import open3d as o3d  # type: ignore
     except Exception as exc:  # pragma: no cover - optional dep
@@ -135,7 +149,7 @@ def _depth_from_point_cloud(src, grid: Tuple[int, int] = (240, 320)) -> Tuple[np
                 Path(path).unlink(missing_ok=True)
             except Exception:
                 pass
-    pts = np.asarray(pc.points)
+    pts = _convert_point_units(np.asarray(pc.points), units=units)
     if pts.size == 0:
         depth = np.zeros(grid, dtype=np.float32)
         return depth, np.zeros_like(depth, dtype=bool), pts
@@ -154,7 +168,7 @@ def _depth_from_point_cloud(src, grid: Tuple[int, int] = (240, 320)) -> Tuple[np
     return depth, valid, pts
 
 
-def load_depth(src) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+def load_depth(src, units: str = "auto") -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
     suffix = ""
     if isinstance(src, (str, Path)):
         suffix = Path(src).suffix.lower()
@@ -168,7 +182,7 @@ def load_depth(src) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         depth, valid = _depth_from_npy(src)
         return depth, valid, None
     if suffix in {".ply", ".pcd"}:
-        depth, valid, pts = _depth_from_point_cloud(src)
+        depth, valid, pts = _depth_from_point_cloud(src, units=units)
         return depth, valid, pts
     raise ValueError("Unsupported depth/point-cloud format")
 
@@ -180,9 +194,10 @@ def build_inputs(
     bbox_xyxy: Optional[List[float]] = None,
     track_id: int = 1,
     conf: float = 0.9,
+    point_units: str = "auto",
 ) -> FileInputs:
     rgb = load_rgb_image(rgb_file)
-    depth, valid, pts = load_depth(depth_file)
+    depth, valid, pts = load_depth(depth_file, units=point_units)
     depth_h, depth_w = depth.shape[:2]
     rgb_h, rgb_w = rgb.shape[:2]
     if bbox_xyxy is None:
@@ -205,6 +220,6 @@ def build_inputs(
         "species": species,
         "track_id": track_id,
     }
-    depth_frame = DepthFrame(timestamp=ts, depth=depth, valid=valid)
+    depth_frame = DepthFrame(timestamp=ts, depth=depth, valid=valid, point_cloud=pts)
     return FileInputs(detection=detection, depth_frame=depth_frame, rgb=rgb, bbox_xyxy=bbox, point_cloud=pts)
 

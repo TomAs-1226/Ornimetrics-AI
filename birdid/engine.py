@@ -52,6 +52,9 @@ class BirdIDConfig:
     validation_min_valid_ratio: float = 0.25
     validation_min_size_m: float = 0.04
     validation_max_size_m: float = 0.28
+    validation_scattering_min: float = 0.002
+    validation_planar_thickness_min: float = 0.006
+    pointcloud_units: str = "auto"
     depth_roi_min_area: int = 400
     depth_roi_min_dim: int = 10
     depth_roi_pad_px: int = 8
@@ -102,6 +105,9 @@ class BirdIDConfig:
             validation_min_valid_ratio=float(_get("validation", "min_valid_ratio", default=0.25)),
             validation_min_size_m=float(_get("validation", "min_size_m", default=0.04)),
             validation_max_size_m=float(_get("validation", "max_size_m", default=0.28)),
+            validation_scattering_min=float(_get("validation", "scattering_min", default=0.002)),
+            validation_planar_thickness_min=float(_get("validation", "planar_thickness_min", default=0.006)),
+            pointcloud_units=str(_get("validation", "pointcloud_units", default="auto")),
             depth_roi_min_area=int(_get("depth", "roi_min_area", default=400)),
             depth_roi_min_dim=int(_get("depth", "roi_min_dim", default=10)),
             depth_roi_pad_px=int(_get("depth", "roi_pad_px", default=8)),
