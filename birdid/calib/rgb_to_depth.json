@@ -1,0 +1,10 @@
+{
+  "method": "homography",
+  "matrix": [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0]
+  ],
+  "image_size_rgb": [0, 0],
+  "image_size_depth": [0, 0]
+}

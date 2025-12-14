@@ -1,0 +1,22 @@
+{
+  "depth": {
+    "mode": "320x240",
+    "max_latency_ms": 150,
+    "timestamp_tolerance_ms": 120,
+    "min_valid_ratio": 0.4,
+    "max_depth_variance": 0.06,
+    "min_bbox_area": 900,
+    "max_bbox_area": 40000
+  },
+  "tracklets": {
+    "buffer_seconds": 1.2,
+    "min_frames": 3,
+    "max_frames": 12,
+    "aggregate_stride": 4
+  },
+  "matching": {
+    "cosine_threshold": 0.42,
+    "ema": 0.05,
+    "max_prototypes": 20
+  }
+}
