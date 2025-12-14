@@ -1,1 +1,11 @@
+ultralytics
+torch
+torchvision
 numpy
+opencv-python
+open3d
+pytorch-metric-learning
+scipy
+filterpy
+sqlite-utils
+pytest
