@@ -178,8 +178,11 @@ def process_frame(
         second_best = scored[1]["dist"] if len(scored) > 1 else 1.0
         best_geom = scored[0].get("geometry", float("inf")) if scored else float("inf")
         margin = second_best - best_dist
+        geometry_block = best_geom < float("inf") and best_geom > gallery.geometry_guard
         create_new = best_id is None or gallery.needs_new_identity(det["class_name"], best_dist, geometry=best_geom)
-        reason = "empty_gallery" if best_id is None else ("geometry_guard" if best_geom > gallery.geometry_guard else ("above_threshold" if create_new else "matched"))
+        if geometry_block:
+            create_new = False
+        reason = "empty_gallery" if best_id is None else ("geometry_guard" if geometry_block else ("above_threshold" if create_new else "matched"))
         threshold_used = gallery.get_threshold(det["class_name"])
         det_info = {
             "best_id": best_id,
@@ -192,10 +195,19 @@ def process_frame(
             "reason": reason,
             "top5": scored,
         }
-        action = "dispense" if not create_new and reason == "matched" else "accepted"
-        det["decision_state"] = "rejected" if det.get("deny_reason") else ("accepted" if action == "accepted" else "dispensing")
+        action = "rejected" if geometry_block else ("dispense" if not create_new and reason == "matched" else "accepted")
+        det["decision_state"] = "rejected" if det.get("deny_reason") or geometry_block else ("accepted" if action == "accepted" else "dispensing")
         det["decision_reason"] = reason
         det["action"] = action
+        if geometry_block:
+            det["deny_reason"] = reason
+            det["individual_id"] = None
+            det["individual_name"] = None
+            det["min_dist"] = float(best_dist)
+            det["second_best_dist"] = float(second_best)
+            det["margin"] = float(margin)
+            processed.append(det)
+            continue
         if create_new:
             indiv_id = str(uuid.uuid4())
             name = generate_name()
