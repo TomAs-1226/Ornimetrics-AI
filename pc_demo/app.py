@@ -9,7 +9,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:  # pragma: no cover - allow tests without streamlit installed
+    class _Stub:
+        def __getattr__(self, name):
+            raise ImportError("streamlit is required to run the demo UI")
+
+        def cache_resource(self, *args, **kwargs):
+            def decorator(fn):
+                return fn
+
+            return decorator
+
+    st = _Stub()
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -27,11 +40,19 @@ LOGGER = logging.getLogger(__name__)
 
 
 class HybridDetector:
-    def __init__(self, base, fallback_bbox: Optional[List[float]], class_name: str, override_class: bool):
+    def __init__(
+        self,
+        base,
+        fallback_bbox: Optional[List[float]],
+        class_name: str,
+        override_class: bool,
+        allow_fallback: bool,
+    ):
         self.base = base
         self.fallback_bbox = fallback_bbox
         self.class_name = class_name
         self.override_class = override_class
+        self.allow_fallback = allow_fallback
 
     def detect(self, image) -> List[Dict[str, Any]]:
         detections: List[Dict[str, Any]] = []
@@ -40,11 +61,11 @@ class HybridDetector:
             if self.override_class:
                 for d in detections:
                     d["class_name"] = self.class_name
-        if detections:
+        if detections or not self.allow_fallback:
             return detections
         h, w = image.shape[:2]
         bbox = self.fallback_bbox or [0, 0, w, h]
-        return [{"bbox": bbox, "class_name": self.class_name, "score": 0.99}]
+        return [{"bbox": bbox, "class_name": self.class_name, "score": 0.99, "fallback": True}]
 
 
 def _load_rgb(file) -> np.ndarray:
@@ -85,6 +106,25 @@ def _load_depth_or_cloud(file) -> Tuple[np.ndarray, str]:
         points = np.asarray(pc.points, dtype=np.float32)
         return points, "cloud"
     raise ValueError(f"Unsupported depth/point-cloud extension: {suffix}")
+
+
+def _draw_overlay(rgb: np.ndarray, detections: List[Dict[str, Any]]) -> np.ndarray:
+    import cv2  # type: ignore
+
+    if rgb is None or rgb.size == 0:
+        return rgb
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    for det in detections:
+        bbox = det.get("bbox", [0, 0, 0, 0])
+        x1, y1, x2, y2 = [int(x) for x in bbox]
+        cv2.rectangle(bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cls = det.get("class_name", "")
+        action = det.get("action") or det.get("decision_state")
+        label_parts = [p for p in [cls, action] if p]
+        label = " | ".join(label_parts) if label_parts else cls
+        if label:
+            cv2.putText(bgr, label, (x1, max(y1 - 5, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+    return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
 
 @st.cache_resource(show_spinner=False)
@@ -170,6 +210,7 @@ def main() -> None:
     species = st.text_input("Species label", value="sparrow")
     use_yolo = st.checkbox("Use YOLO detection if available", value=True)
     override_class = st.checkbox("Override YOLO class with species input", value=False)
+    allow_fallback = st.checkbox("Use manual bbox fallback when no detections", value=False)
     bbox_inputs = st.text_input("Manual bbox x1,y1,x2,y2 (optional)", value="")
     model_path = st.text_input("YOLO model path", value=default_yolo_model_path())
 
@@ -243,7 +284,7 @@ def main() -> None:
         if model is None and use_yolo:
             st.info("YOLO unavailable; falling back to manual bbox.")
 
-        detector = HybridDetector(model, manual_bbox, species, override_class)
+        detector = HybridDetector(model, manual_bbox, species, override_class, allow_fallback)
 
         intrinsics = {"fx": fx, "fy": fy, "cx": cx, "cy": cy}
         outputs, frame_debug = process_frame(
@@ -268,6 +309,8 @@ def main() -> None:
             st.subheader("Detections")
             for det in outputs:
                 st.json(det)
+            st.subheader("RGB with detections")
+            st.image(_draw_overlay(rgb, outputs), caption="Detection overlay")
 
         st.subheader("Identity debug")
         _render_debug_blocks(frame_debug)
