@@ -11,6 +11,7 @@ from src.models.dgcnn import DGCNN
 class EmbedResult:
     embedding: torch.Tensor
     preprocess_stats: Dict[str, Any]
+    points: np.ndarray
 
 
 class PointReID:
@@ -47,4 +48,4 @@ class PointReID:
             tensor = torch.from_numpy(points).float().unsqueeze(0).to(self.device)
             embedding = self.model(tensor).squeeze(0)
         norm = torch.norm(embedding) + 1e-8
-        return EmbedResult(embedding=embedding / norm, preprocess_stats=prep.stats)
+        return EmbedResult(embedding=embedding / norm, preprocess_stats=prep.stats, points=prep.points)

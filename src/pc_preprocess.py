@@ -5,7 +5,14 @@ import numpy as np
 
 # Force headless Open3D to avoid libGL issues in minimal environments
 os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
-import open3d as o3d
+def _get_o3d():
+    os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
+    try:  # pragma: no cover - import guard
+        import open3d as o3d  # type: ignore
+
+        return o3d
+    except Exception:
+        return None
 
 DEFAULT_POINTS = 2048
 
@@ -38,7 +45,10 @@ def _get_rng(seed: int) -> np.random.Generator:
     return rng_cache[seed]
 
 
-def _to_o3d(pc: np.ndarray) -> o3d.geometry.PointCloud:
+def _to_o3d(pc: np.ndarray):
+    o3d = _get_o3d()
+    if o3d is None:
+        return None
     cloud = o3d.geometry.PointCloud()
     cloud.points = o3d.utility.Vector3dVector(pc)
     return cloud
@@ -48,6 +58,8 @@ def _remove_plane(pc: np.ndarray, distance: float) -> Tuple[np.ndarray, float]:
     if pc.shape[0] < 10:
         return pc, 0.0
     cloud = _to_o3d(pc)
+    if cloud is None:
+        return pc, 0.0
     plane_model, inliers = cloud.segment_plane(distance_threshold=distance, ransac_n=3, num_iterations=50)
     if len(inliers) == 0:
         return pc, 0.0
@@ -75,6 +87,8 @@ def _voxel_down(pc: np.ndarray, voxel_size: float) -> np.ndarray:
     if pc.shape[0] == 0:
         return pc
     cloud = _to_o3d(pc)
+    if cloud is None:
+        return pc
     down = cloud.voxel_down_sample(voxel_size)
     return np.asarray(down.points)
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 import argparse
 import json
+import os
 import numpy as np
 from pathlib import Path
+
+os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
 import open3d as o3d
 
 from src.reid_embedder import PointReID

@@ -27,3 +27,15 @@ def test_gallery_per_species():
     best_cat, _, _ = gallery.match("cat", np.array([0.1, 0.2, 0.3]))
     assert best_bird == "id1"
     assert best_cat == "id2"
+
+
+def test_geometry_guard_creates_new_identity():
+    gallery = Gallery(default_threshold=0.3, geometry_guard=0.05)
+    base_emb = np.ones(3)
+    ref_points = np.zeros((10, 3))
+    gallery.update("bird", "id1", base_emb, geometry_points=ref_points)
+
+    candidate_points = np.ones((10, 3)) * 10.0  # far away geometry
+    _, dist, scored = gallery.match("bird", base_emb, candidate_points=candidate_points)
+    assert scored[0]["geometry"] > gallery.geometry_guard
+    assert gallery.needs_new_identity("bird", dist, geometry=scored[0]["geometry"])

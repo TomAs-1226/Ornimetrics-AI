@@ -87,7 +87,10 @@ def ensure_debug_dir():
 
 
 def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, decision, tracker_stats):
-    sorted_scores = [{"id": i, "dist": float(d)} for i, d in gallery_scores]
+    sorted_scores = [
+        {"id": s.get("id"), "dist": float(s.get("dist", 0.0)), "geometry": float(s.get("geometry", float("inf")))}
+        for s in gallery_scores
+    ]
     norm = float(np.linalg.norm(embedding)) if embedding is not None else 0.0
     block = {
         "class": det.get("class_name"),
@@ -100,6 +103,7 @@ def detection_debug_block(det, preprocess_stats, embedding, gallery_scores, deci
         "second_best_dist": decision.get("second_best"),
         "margin": decision.get("margin"),
         "threshold": decision.get("threshold"),
+        "geometry_dist": decision.get("geometry_dist"),
         "new_identity": decision.get("new_identity"),
         "reason": decision.get("reason"),
         "tracker": tracker_stats,
@@ -131,11 +135,12 @@ def process_frame(
         embed_result = embedder.embed(points)
         emb = embed_result.embedding.cpu().numpy()
         det["embedding"] = emb
-        best_id, best_dist, scored = gallery.match(det["class_name"], emb)
-        second_best = scored[1][1] if len(scored) > 1 else 1.0
+        best_id, best_dist, scored = gallery.match(det["class_name"], emb, candidate_points=embed_result.points)
+        second_best = scored[1]["dist"] if len(scored) > 1 else 1.0
+        best_geom = scored[0].get("geometry", float("inf")) if scored else float("inf")
         margin = second_best - best_dist
-        create_new = best_id is None or gallery.needs_new_identity(det["class_name"], best_dist)
-        reason = "empty_gallery" if best_id is None else ("above_threshold" if create_new else "matched")
+        create_new = best_id is None or gallery.needs_new_identity(det["class_name"], best_dist, geometry=best_geom)
+        reason = "empty_gallery" if best_id is None else ("geometry_guard" if best_geom > gallery.geometry_guard else ("above_threshold" if create_new else "matched"))
         threshold_used = gallery.get_threshold(det["class_name"])
         det_info = {
             "best_id": best_id,
@@ -143,6 +148,7 @@ def process_frame(
             "second_best": float(second_best),
             "margin": float(margin),
             "threshold": float(threshold_used),
+            "geometry_dist": float(best_geom),
             "new_identity": bool(create_new),
             "reason": reason,
             "top5": scored,
@@ -150,7 +156,7 @@ def process_frame(
         if create_new:
             indiv_id = str(uuid.uuid4())
             name = generate_name()
-            gallery.update(det["class_name"], indiv_id, emb, allow=True, name=name)
+            gallery.update(det["class_name"], indiv_id, emb, allow=True, name=name, geometry_points=embed_result.points)
             db.upsert_individual(indiv_id, name, det["class_name"], emb)
             det["individual_id"] = indiv_id
             det["individual_name"] = name
@@ -158,7 +164,13 @@ def process_frame(
             det["second_best_dist"] = second_best
             det["margin"] = margin
         else:
-            gallery.update(det["class_name"], best_id, emb, allow=gallery.should_update_identity(det["class_name"], best_dist))
+            gallery.update(
+                det["class_name"],
+                best_id,
+                emb,
+                allow=gallery.should_update_identity(det["class_name"], best_dist),
+                geometry_points=embed_result.points,
+            )
             info = db.get_identity(best_id)
             det["individual_id"] = best_id
             det["individual_name"] = info[0] if info else None
