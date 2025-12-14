@@ -7,6 +7,7 @@ class DGCNN(nn.Module):
     def __init__(self, emb_dims: int = 256, k: int = 20):
         super().__init__()
         self.k = k
+        self.emb_dims = emb_dims
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm2d(128)

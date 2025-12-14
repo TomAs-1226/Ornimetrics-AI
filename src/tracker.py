@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import List, Dict, Any
 import numpy as np
 from filterpy.kalman import KalmanFilter
@@ -31,53 +32,61 @@ def create_kf(x, y, w, h):
     return kf
 
 
+@dataclass
 class Track:
-    def __init__(self, track_id: int, bbox):
-        x1, y1, x2, y2 = bbox
-        self.track_id = track_id
+    track_id: int
+    bbox: List[float]
+    embedding_history: List[np.ndarray] = field(default_factory=list)
+    kf: KalmanFilter = None
+    time_since_update: int = 0
+
+    def __post_init__(self):
+        x1, y1, x2, y2 = self.bbox
         self.kf = create_kf((x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1)
-        self.time_since_update = 0
-        self.bbox = bbox
-        self.embedding = None
 
     def predict(self):
         self.kf.predict()
         self.time_since_update += 1
 
-    def update(self, bbox, embedding=None):
+    def update(self, bbox, embedding=None, smooth_window: int = 5):
         x1, y1, x2, y2 = bbox
-        z = np.array([[ (x1 + x2) / 2], [ (y1 + y2) / 2], [x2 - x1], [y2 - y1]])
+        z = np.array([[(x1 + x2) / 2], [(y1 + y2) / 2], [x2 - x1], [y2 - y1]])
         self.kf.update(z)
         self.time_since_update = 0
         self.bbox = bbox
         if embedding is not None:
-            self.embedding = embedding
+            self.embedding_history.append(embedding)
+            if len(self.embedding_history) > smooth_window:
+                self.embedding_history = self.embedding_history[-smooth_window:]
+
+    @property
+    def smoothed_embedding(self):
+        if not self.embedding_history:
+            return None
+        stacked = np.stack(self.embedding_history)
+        return stacked.mean(axis=0)
 
     def current_bbox(self):
         cx, cy, w, h = self.kf.x[:4].reshape(-1)
-        return [cx - w/2, cy - h/2, cx + w/2, cy + h/2]
+        return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]
 
 
 class Tracker:
-    def __init__(self, alpha: float = 0.5, max_age: int = 10):
+    def __init__(self, alpha: float = 0.5, max_age: int = 10, smooth_window: int = 5):
         self.alpha = alpha
         self.max_age = max_age
+        self.smooth_window = smooth_window
         self.tracks: List[Track] = []
         self.next_id = 1
 
-    def _cost_matrix(self, detections: List[Dict[str, Any]]):
-        if not self.tracks or not detections:
-            return np.zeros((0, 0))
-        cost = np.zeros((len(self.tracks), len(detections)))
-        for i, track in enumerate(self.tracks):
-            for j, det in enumerate(detections):
-                bbox_cost = self._bbox_cost(track.current_bbox(), det["bbox"])
-                emb_cost = 0 if track.embedding is None or det.get("embedding") is None else 1 - float(np.dot(track.embedding, det["embedding"]) / (np.linalg.norm(track.embedding) * np.linalg.norm(det["embedding"]) + 1e-8))
-                cost[i, j] = self.alpha * bbox_cost + (1 - self.alpha) * emb_cost
-        return cost
+    def _appearance_cost(self, track: Track, det_emb: np.ndarray):
+        if track.smoothed_embedding is None or det_emb is None:
+            return 1.0
+        te = track.smoothed_embedding
+        denom = (np.linalg.norm(te) * np.linalg.norm(det_emb) + 1e-8)
+        return 1 - float(np.dot(te, det_emb) / denom)
 
-    @staticmethod
-    def _bbox_cost(b1, b2):
+    def _bbox_cost(self, b1, b2):
         x1 = max(b1[0], b2[0])
         y1 = max(b1[1], b2[1])
         x2 = min(b1[2], b2[2])
@@ -88,6 +97,17 @@ class Tracker:
         union = area1 + area2 - inter + 1e-6
         iou = inter / union
         return 1 - iou
+
+    def _cost_matrix(self, detections: List[Dict[str, Any]]):
+        if not self.tracks or not detections:
+            return np.zeros((0, 0))
+        cost = np.zeros((len(self.tracks), len(detections)))
+        for i, track in enumerate(self.tracks):
+            for j, det in enumerate(detections):
+                bbox_cost = self._bbox_cost(track.current_bbox(), det["bbox"])
+                emb_cost = self._appearance_cost(track, det.get("embedding"))
+                cost[i, j] = self.alpha * bbox_cost + (1 - self.alpha) * emb_cost
+        return cost
 
     def update(self, detections: List[Dict[str, Any]]):
         for track in self.tracks:
@@ -103,18 +123,34 @@ class Tracker:
         used_tracks = set()
         for r, c in matched_indices:
             track = self.tracks[r]
-            track.update(detections[c]["bbox"], detections[c].get("embedding"))
-            detections[c]["track_id"] = track.track_id
+            det = detections[c]
+            motion_cost = self._bbox_cost(track.current_bbox(), det["bbox"])
+            appearance_cost = self._appearance_cost(track, det.get("embedding"))
+            combined = self.alpha * motion_cost + (1 - self.alpha) * appearance_cost
+            track.update(det["bbox"], det.get("embedding"), self.smooth_window)
+            det["track_id"] = track.track_id
+            det["tracker_debug"] = {
+                "motion_cost": float(motion_cost),
+                "appearance_cost": float(appearance_cost),
+                "combined_cost": float(combined),
+            }
             used_tracks.add(r)
         # Create new tracks for unmatched detections
         for idx in unmatched_dets:
             det = detections[idx]
             track = Track(self.next_id, det["bbox"])
-            track.embedding = det.get("embedding")
+            track.update(det["bbox"], det.get("embedding"), self.smooth_window)
             self.tracks.append(track)
             det["track_id"] = self.next_id
+            det["tracker_debug"] = {
+                "motion_cost": 1.0,
+                "appearance_cost": 1.0,
+                "combined_cost": 1.0,
+            }
             self.next_id += 1
         # Prune old tracks
         self.tracks = [t for t in self.tracks if t.time_since_update <= self.max_age]
         return detections
 
+
+__all__ = ["Tracker", "Track"]

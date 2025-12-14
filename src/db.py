@@ -38,7 +38,6 @@ class IdentityDB:
             (individual_id, name, class_name),
         )
         if embedding is not None:
-            cur.execute("DELETE FROM embeddings WHERE individual_id=?", (individual_id,))
             cur.execute(
                 "INSERT INTO embeddings(individual_id, embedding) VALUES(?, ?)",
                 (individual_id, embedding.astype("float32").tobytes()),
@@ -50,6 +49,15 @@ class IdentityDB:
         cur.execute("SELECT name, class FROM individuals WHERE individual_id=?", (individual_id,))
         row = cur.fetchone()
         return (row[0], row[1]) if row else None
+
+    def load_embeddings(self, individual_id: str) -> Optional[np.ndarray]:
+        cur = self.conn.cursor()
+        cur.execute("SELECT embedding FROM embeddings WHERE individual_id=?", (individual_id,))
+        rows = cur.fetchall()
+        if not rows:
+            return None
+        embs = [np.frombuffer(r[0], dtype="float32") for r in rows]
+        return np.stack(embs)
 
     def close(self):
         self.conn.close()

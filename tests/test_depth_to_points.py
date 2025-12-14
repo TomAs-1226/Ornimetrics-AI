@@ -6,6 +6,7 @@ def test_backproject_depth_shape():
     depth = np.ones((4, 4), dtype=np.float32)
     intr = {"fx": 1.0, "fy": 1.0, "cx": 1.5, "cy": 1.5}
     bbox = (1, 1, 3, 3)
-    pts = backproject_depth(depth, intr, bbox)
+    pts, stats = backproject_depth(depth, intr, bbox)
     assert pts.shape[1] == 3
     assert pts.shape[0] > 0
+    assert stats.num_points_raw == pts.shape[0]
