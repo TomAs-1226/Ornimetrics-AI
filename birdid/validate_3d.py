@@ -48,6 +48,7 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
         centroids.append(np.array([x_norm.mean(), y_norm.mean(), float(vals.mean())]))
     if not points_list:
         return ValidationResult(False, 0.0, reason="no_points")
+
     points = np.concatenate(points_list, axis=0)
     valid_ratio = valid_pixels / max(total_pixels, 1)
     thickness = float(points[:, 2].max() - points[:, 2].min())
@@ -56,9 +57,9 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
     if len(centroids) > 1:
         centroid_jitter = float(np.linalg.norm(np.std(np.stack(centroids, axis=0), axis=0)))
 
-    # Approximate physical size using normalized extent scaled by mean depth.
     mask_stack = np.stack([m for _, m in depth_masks], axis=0)
     size_ok = True
+    approx_size_m = 0.0
     if mask_stack.any():
         _, ys, xs = np.nonzero(mask_stack)
         h, w = depth_masks[0][1].shape
@@ -68,12 +69,8 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
         if approx_size_m < config.validation_min_size_m or approx_size_m > config.validation_max_size_m:
             size_ok = False
 
-    if valid_ratio < config.validation_min_valid_ratio:
-        return ValidationResult(False, 0.0, reason="insufficient_depth")
-    if points.shape[0] < config.validation_min_points:
-        return ValidationResult(False, 0.0, reason="too_few_points")
-    if not size_ok:
-        return ValidationResult(False, 0.2, reason="size_out_of_bounds")
+    if valid_ratio <= 0:
+        return ValidationResult(False, 0.0, reason="no_points")
     if thickness < config.validation_min_thickness or thickness > config.validation_max_thickness:
         return ValidationResult(False, 0.2, reason="thickness_out_of_bounds")
     planar_ratio = _compute_planarity(points)
@@ -82,11 +79,20 @@ def validate_tracklet(depth_masks: List[Tuple[np.ndarray, np.ndarray]], config) 
     if centroid_jitter > config.validation_max_centroid_jitter:
         return ValidationResult(False, 0.2, reason="centroid_instability")
 
-    # Rough quality score combining multiple cues.
+    completeness_penalty = 0.0
+    if valid_ratio < config.validation_min_valid_ratio:
+        completeness_penalty += 0.3
+    if points.shape[0] < config.validation_min_points:
+        completeness_penalty += 0.4
+    size_score = 1.0
+    if not size_ok:
+        completeness_penalty += 0.2
+        size_score = 0.4
+
     planar_score = max(0.0, min(1.0, (planar_ratio - config.validation_planar_ratio) * 50))
     thickness_score = max(0.0, min(1.0, (thickness - config.validation_min_thickness) / (config.validation_max_thickness - config.validation_min_thickness + 1e-6)))
     density_score = max(0.0, min(1.0, valid_ratio))
     stability_score = max(0.0, min(1.0, 1.0 - centroid_jitter / max(config.validation_max_centroid_jitter, 1e-6)))
-    size_score = 1.0 if size_ok else 0.0
     quality = float(0.2 * (planar_score + thickness_score + density_score + stability_score + size_score))
-    return ValidationResult(True, quality, reason=None)
+    quality = max(0.0, quality - completeness_penalty)
+    return ValidationResult(True, quality, reason=None if completeness_penalty == 0 else "partial_low_quality")

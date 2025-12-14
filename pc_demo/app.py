@@ -145,8 +145,19 @@ def run_pipeline(
     else:
         match = db.match(species, embedding, cfg.cosine_threshold)
 
-    if validation.is_valid and match.individual_id is not None and match.is_match:
-        db.update_prototype(match.individual_id, embedding, cfg.ema, cfg.max_prototypes)
+    now_ts = time.time()
+    if match.individual_id is not None:
+        db.mark_seen(match.individual_id, now_ts)
+    refresh_ok = (
+        validation.is_valid
+        and match.individual_id is not None
+        and match.is_match
+        and match.confidence >= cfg.refresh_confidence_threshold
+        and validation.quality_score >= cfg.refresh_quality_min
+        and db.is_refresh_stale(match.individual_id, now_ts, cfg.refresh_days)
+    )
+    if refresh_ok:
+        db.update_prototype(match.individual_id, embedding, cfg.ema, cfg.max_prototypes, now_ts=now_ts)
 
     decision = decide(
         species=species,
@@ -157,7 +168,7 @@ def run_pipeline(
         frames_used=1,
         config=cfg,
         db=db,
-        now_ts=time.time(),
+        now_ts=now_ts,
     )
 
     result = {
@@ -172,6 +183,10 @@ def run_pipeline(
         "quality_score": validation.quality_score,
         "frames_used": 1,
         "cooldown_remaining": decision.cooldown_remaining,
+        "roi_debug": {
+            "depth_shape": depth_crop.shape[:2],
+            "percent_valid_depth": float(valid_crop.mean()) if valid_crop.size else 0.0,
+        },
     }
     return result, depth_clean if mask.size else None
 
@@ -255,6 +270,11 @@ def main() -> None:
         st.write(
             f"Quality score: {result['quality_score']:.3f} | min_dist: {result['min_dist']:.3f} | margin: {result['margin']:.3f}"
         )
+        with st.expander("ROI Debug", expanded=False):
+            roi_dbg = result.get("roi_debug", {})
+            st.write(
+                f"Depth shape: {roi_dbg.get('depth_shape', '?')} | percent valid depth: {roi_dbg.get('percent_valid_depth', 0):.3f}"
+            )
 
         if show_debug:
             st.subheader("Debug")

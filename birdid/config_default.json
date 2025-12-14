@@ -6,7 +6,11 @@
     "min_valid_ratio": 0.4,
     "max_depth_variance": 0.06,
     "min_bbox_area": 900,
-    "max_bbox_area": 40000
+    "max_bbox_area": 40000,
+    "roi_min_area": 400,
+    "roi_min_dim": 10,
+    "roi_pad_px": 8,
+    "roi_fallback": "last_or_valid"
   },
   "yolo": {
     "min_confidence": 0.5
@@ -15,12 +19,16 @@
     "buffer_seconds": 1.2,
     "min_frames": 3,
     "max_frames": 12,
-    "aggregate_stride": 4
+    "aggregate_stride": 4,
+    "best_k_frames": 5
   },
   "matching": {
     "cosine_threshold": 0.42,
     "ema": 0.05,
-    "max_prototypes": 20
+    "max_prototypes": 20,
+    "refresh_days": 7,
+    "refresh_confidence_threshold": 0.65,
+    "refresh_quality_min": 0.4
   },
     "validation": {
       "min_points": 150,

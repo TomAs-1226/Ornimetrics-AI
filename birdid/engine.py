@@ -14,6 +14,7 @@ from . import embedding_baseline
 from .db import BirdIDDatabase
 from .decision import decide
 from .segment import DepthSegmenter
+from .utils.roi import clamp_roi, pad_roi, roi_area, safe_roi_from_center
 from .validate_3d import validate_tracklet
 
 
@@ -51,6 +52,14 @@ class BirdIDConfig:
     validation_min_valid_ratio: float = 0.25
     validation_min_size_m: float = 0.04
     validation_max_size_m: float = 0.28
+    depth_roi_min_area: int = 400
+    depth_roi_min_dim: int = 10
+    depth_roi_pad_px: int = 8
+    depth_roi_fallback: str = "last_or_valid"
+    best_k_frames: int = 5
+    refresh_days: int = 7
+    refresh_confidence_threshold: float = 0.65
+    refresh_quality_min: float = 0.4
 
     @classmethod
     def from_file(cls, path: str) -> "BirdIDConfig":
@@ -93,6 +102,14 @@ class BirdIDConfig:
             validation_min_valid_ratio=float(_get("validation", "min_valid_ratio", default=0.25)),
             validation_min_size_m=float(_get("validation", "min_size_m", default=0.04)),
             validation_max_size_m=float(_get("validation", "max_size_m", default=0.28)),
+            depth_roi_min_area=int(_get("depth", "roi_min_area", default=400)),
+            depth_roi_min_dim=int(_get("depth", "roi_min_dim", default=10)),
+            depth_roi_pad_px=int(_get("depth", "roi_pad_px", default=8)),
+            depth_roi_fallback=str(_get("depth", "roi_fallback", default="last_or_valid")),
+            best_k_frames=int(_get("tracklets", "best_k_frames", default=5)),
+            refresh_days=int(_get("matching", "refresh_days", default=7)),
+            refresh_confidence_threshold=float(_get("matching", "refresh_confidence_threshold", default=0.65)),
+            refresh_quality_min=float(_get("matching", "refresh_quality_min", default=0.4)),
         )
 
 
@@ -103,25 +120,38 @@ class TrackletBuffer:
     detections: List[Dict] = field(default_factory=list)
     embeddings: List[np.ndarray] = field(default_factory=list)
     depth_masks: List[tuple[np.ndarray, np.ndarray]] = field(default_factory=list)
+    qualities: List[float] = field(default_factory=list)
     last_timestamp: float = 0.0
 
-    def add(self, detection: Dict, embedding: np.ndarray, depth: np.ndarray, mask: np.ndarray):
+    def add(self, detection: Dict, embedding: np.ndarray, depth: np.ndarray, mask: np.ndarray, quality: float):
         self.detections.append(detection)
         self.embeddings.append(embedding)
         self.depth_masks.append((depth, mask))
+        self.qualities.append(float(quality))
         self.last_timestamp = detection["timestamp"]
         if len(self.detections) > 64:
             self.detections.pop(0)
             self.embeddings.pop(0)
             self.depth_masks.pop(0)
+            self.qualities.pop(0)
 
-    def aggregate(self) -> np.ndarray:
+    def aggregate(self, top_k: int) -> np.ndarray:
         if not self.embeddings:
             return np.zeros(1, dtype=np.float32)
-        mat = np.stack(self.embeddings, axis=0)
+        if top_k <= 0 or top_k >= len(self.embeddings):
+            selected = list(range(len(self.embeddings)))
+        else:
+            selected = np.argsort(self.qualities)[::-1][:top_k]
+        mat = np.stack([self.embeddings[i] for i in selected], axis=0)
         mean = mat.mean(axis=0)
         norm = np.linalg.norm(mean) + 1e-8
         return mean / norm
+
+    def top_depth_masks(self, top_k: int) -> List[tuple[np.ndarray, np.ndarray]]:
+        if top_k <= 0 or top_k >= len(self.depth_masks):
+            return list(self.depth_masks)
+        selected = np.argsort(self.qualities)[::-1][:top_k]
+        return [self.depth_masks[i] for i in selected]
 
 
 class Calibration:
@@ -155,21 +185,60 @@ class BirdIDEngine:
         self.segmenter = DepthSegmenter(min_valid_ratio=self.config.min_valid_ratio)
         self.calib = Calibration()
         self.tracklets: Dict[int, TrackletBuffer] = {}
+        self._last_valid_roi: Dict[int, tuple[int, int, int, int]] = {}
 
-    def _crop_depth(self, depth_frame, bbox_xyxy: List[float]):
-        x1, y1, x2, y2 = self.calib.map_bbox(bbox_xyxy, depth_frame.depth.shape)
+    def _fallback_roi(self, depth_frame, track_id: int, clamped_roi):
+        dh, dw = depth_frame.depth.shape[:2]
+        fallback = None
+        if self.config.depth_roi_fallback in {"last_or_valid", "last"}:
+            last = self._last_valid_roi.get(track_id)
+            if last:
+                fallback = clamp_roi(last, dw, dh)
+        if fallback is None and self.config.depth_roi_fallback in {"last_or_valid", "valid_mask", "blob"}:
+            ys, xs = np.nonzero(depth_frame.valid)
+            if len(xs) > 0:
+                fallback = clamp_roi((xs.min(), ys.min(), xs.max(), ys.max()), dw, dh)
+        if fallback is None:
+            fallback = safe_roi_from_center(dw / 2.0, dh / 2.0, dw * 0.4, dh * 0.4, dw, dh)
+        return fallback
+
+    def _crop_depth(self, depth_frame, bbox_xyxy: List[float], track_id: int):
+        dh, dw = depth_frame.depth.shape[:2]
+        raw_roi = self.calib.map_bbox(bbox_xyxy, depth_frame.depth.shape)
+        clamped = clamp_roi(raw_roi, dw, dh)
+        padded = clamp_roi(pad_roi(clamped, self.config.depth_roi_pad_px), dw, dh)
+        roi = padded
+        width = roi[2] - roi[0]
+        height = roi[3] - roi[1]
+        if roi_area(roi) < self.config.depth_roi_min_area or width < self.config.depth_roi_min_dim or height < self.config.depth_roi_min_dim:
+            roi = clamp_roi(pad_roi(clamped, self.config.depth_roi_pad_px * 2), dw, dh)
+        width = roi[2] - roi[0]
+        height = roi[3] - roi[1]
+        if roi_area(roi) < self.config.depth_roi_min_area or width < self.config.depth_roi_min_dim or height < self.config.depth_roi_min_dim:
+            roi = self._fallback_roi(depth_frame, track_id, clamped)
+        x1, y1, x2, y2 = map(int, roi)
         depth_crop = depth_frame.depth[y1 : y2 + 1, x1 : x2 + 1]
         valid_crop = depth_frame.valid[y1 : y2 + 1, x1 : x2 + 1]
-        return depth_crop, valid_crop
+        metrics = {
+            "raw_depth_roi": raw_roi,
+            "clamped_depth_roi": clamped,
+            "used_depth_roi": roi,
+            "roi_area": roi_area(roi),
+            "roi_valid_ratio": float(valid_crop.mean()) if valid_crop.size else 0.0,
+        }
+        if valid_crop.any():
+            self._last_valid_roi[track_id] = (x1, y1, x2, y2)
+        return depth_crop, valid_crop, metrics
 
-    def _frame_quality_ok(self, depth: np.ndarray, mask: np.ndarray) -> bool:
-        valid_ratio = mask.mean() if mask.size else 0.0
-        if valid_ratio < self.config.min_valid_ratio:
-            return False
-        variance = np.nanvar(depth[mask]) if np.any(mask) else np.inf
-        if variance > self.config.max_depth_variance:
-            return False
-        return True
+    def _frame_quality_score(self, depth: np.ndarray, mask: np.ndarray) -> float:
+        if depth.size == 0 or mask.size == 0:
+            return 0.0
+        valid_ratio = float(mask.mean())
+        if valid_ratio <= 0:
+            return 0.0
+        variance = float(np.nanvar(depth[mask])) if np.any(mask) else float("inf")
+        variance_score = 1.0 if variance == 0 else min(1.0, self.config.max_depth_variance / (variance + 1e-6))
+        return float(max(0.0, min(1.0, 0.6 * valid_ratio + 0.4 * variance_score)))
 
     def process_detection(self, detection: Dict, depth_frame) -> Optional[Dict]:
         if detection.get("conf", 1.0) < self.config.min_species_confidence:
@@ -182,9 +251,13 @@ class BirdIDEngine:
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
         if area < self.config.min_bbox_area or area > self.config.max_bbox_area:
             return None
-        depth_crop, valid_crop = self._crop_depth(depth_frame, bbox)
+        depth_crop, valid_crop, roi_metrics = self._crop_depth(depth_frame, bbox, int(detection.get("track_id", -1)))
         depth_clean, mask = self.segmenter.segment(depth_crop, valid_crop)
-        if not self._frame_quality_ok(depth_clean, mask):
+        if mask.sum() == 0 and valid_crop.any():
+            depth_clean = depth_crop.astype(np.float32, copy=False)
+            mask = valid_crop.astype(bool, copy=False)
+        quality = self._frame_quality_score(depth_clean, mask)
+        if mask.sum() == 0:
             return None
         embedding = self.embedder(depth_clean, mask)
         track_id = int(detection["track_id"])
@@ -196,11 +269,13 @@ class BirdIDEngine:
         if buf is None:
             buf = TrackletBuffer(species=species, track_id=track_id)
             self.tracklets[track_id] = buf
-        buf.add(detection, embedding, depth_clean, mask)
+        buf.add(detection, embedding, depth_clean, mask, quality)
+        detection["roi_metrics"] = roi_metrics
         if len(buf.embeddings) >= self.config.max_frames:
             buf.detections.pop(0)
             buf.embeddings.pop(0)
             buf.depth_masks.pop(0)
+            buf.qualities.pop(0)
         if len(buf.embeddings) >= self.config.min_frames and len(buf.embeddings) % self.config.aggregate_stride == 0:
             return self._finalize(track_id)
         return None
@@ -209,12 +284,24 @@ class BirdIDEngine:
         buf = self.tracklets.get(track_id)
         if not buf:
             return None
-        agg = buf.aggregate()
+        agg = buf.aggregate(self.config.best_k_frames)
         species = buf.species
-        validation = validate_tracklet(buf.depth_masks, self.config)
+        selected_masks = buf.top_depth_masks(self.config.best_k_frames)
+        validation = validate_tracklet(selected_masks, self.config)
         match = self.db.match(species, agg, self.config.cosine_threshold)
-        if validation.is_valid and match.individual_id is not None and match.is_match:
-            self.db.update_prototype(match.individual_id, agg, self.config.ema, self.config.max_prototypes)
+        now_ts = time.time()
+        if match.individual_id is not None:
+            self.db.mark_seen(match.individual_id, now_ts)
+        refresh_ok = (
+            validation.is_valid
+            and match.individual_id is not None
+            and match.is_match
+            and match.confidence >= self.config.refresh_confidence_threshold
+            and validation.quality_score >= self.config.refresh_quality_min
+            and self.db.is_refresh_stale(match.individual_id, now_ts, self.config.refresh_days)
+        )
+        if refresh_ok:
+            self.db.update_prototype(match.individual_id, agg, self.config.ema, self.config.max_prototypes, now_ts=now_ts)
         decision = decide(
             species=species,
             track_id=track_id,
@@ -224,7 +311,7 @@ class BirdIDEngine:
             frames_used=len(buf.embeddings),
             config=self.config,
             db=self.db,
-            now_ts=time.time(),
+            now_ts=now_ts,
         )
         start_ts = buf.detections[0]["timestamp"]
         end_ts = buf.detections[-1]["timestamp"]
@@ -242,6 +329,7 @@ class BirdIDEngine:
             "decision": decision.decision,
             "deny_reason": decision.deny_reason,
             "cooldown_remaining": decision.cooldown_remaining,
+            "roi_debug": buf.detections[-1].get("roi_metrics", {}),
         }
         LOGGER.info("birdid_decision", extra={"decision": result})
         return result

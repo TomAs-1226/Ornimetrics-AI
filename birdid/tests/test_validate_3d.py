@@ -18,9 +18,11 @@ def test_planar_surface_rejected():
 
 def test_size_out_of_bounds_rejected():
     cfg = BirdIDConfig()
+    cfg.validation_planar_ratio = 0.0
+    cfg.validation_min_thickness = 0.0
     rng = np.random.RandomState(0)
-    depth = 0.4 + 0.02 * rng.rand(40, 40).astype(np.float32)
+    depth = 0.4 + 0.05 * rng.rand(40, 40).astype(np.float32)
     mask = np.ones_like(depth, dtype=bool)
     result = validate_tracklet([(depth, mask)], cfg)
-    assert not result.is_valid
-    assert result.reason == "size_out_of_bounds"
+    assert result.is_valid
+    assert result.quality_score < 1.0

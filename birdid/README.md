@@ -80,10 +80,20 @@ and the Google Cloud packages are installed.
   `cooldown` in the config.
 - YOLO species confidence gates dispensing via `yolo.min_confidence`.
 
+### ROI fallback strategy
+Depth ROIs from RGB bboxes are clamped to the CS20 dimensions, padded, and auto-expanded when too small. If the mapped ROI is still invalid, the engine falls back to the last good ROI or a foreground valid-depth blob to avoid empty crops. ROI metrics are included in decision outputs for debugging.
+
+### Partial pointcloud handling
+Tracklets keep per-frame quality and aggregate the best frames so partially visible birds still produce embeddings. Anti-spoof checks remain strict (planarity, thickness, centroid stability), while incomplete coverage only reduces quality. Dispense gating still enforces quality/frames thresholds.
+
+### Weekly refresh policy
+Each individual tracks `last_seen_ts` and `last_refresh_ts`. If a bird is re-matched after `matching.refresh_days` (default 7) with confidence above `matching.refresh_confidence_threshold` and quality above `matching.refresh_quality_min`, its prototype is refreshed with EMA to keep identities current without drift.
+
 ### Migration note
-Existing SQLite databases gain a new `individual_stats` table the next time the
-engine runs. Previously enrolled individuals receive a stats row on first use;
-no manual migration is required.
+Existing SQLite databases gain additional columns (`last_seen_ts`,
+`last_refresh_ts`, prototype `created_ts`) plus the `individual_stats` table the
+next time the engine runs. Previously enrolled individuals receive the new
+metadata on first use; no manual migration is required.
 
 ## Profiling notes
 - Depth capture runs in a background thread; processing avoids unnecessary

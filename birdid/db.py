@@ -40,13 +40,23 @@ class BirdIDDatabase:
         self.conn = sqlite3.connect(self.path)
         self._init_schema()
 
+    def _add_column_if_missing(self, table: str, column: str, decl: str) -> None:
+        cur = self.conn.cursor()
+        cur.execute(f"PRAGMA table_info({table})")
+        cols = [r[1] for r in cur.fetchall()]
+        if column not in cols:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            self.conn.commit()
+
     def _init_schema(self) -> None:
         cur = self.conn.cursor()
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS individuals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                species TEXT NOT NULL
+                species TEXT NOT NULL,
+                last_seen_ts REAL DEFAULT 0,
+                last_refresh_ts REAL DEFAULT 0
             );
             """
         )
@@ -56,6 +66,7 @@ class BirdIDDatabase:
                 individual_id INTEGER NOT NULL,
                 vector BLOB NOT NULL,
                 weight REAL DEFAULT 1.0,
+                created_ts REAL DEFAULT 0,
                 FOREIGN KEY(individual_id) REFERENCES individuals(id)
             );
             """
@@ -72,21 +83,27 @@ class BirdIDDatabase:
             """
         )
         self.conn.commit()
+        # Migration for older installs
+        self._add_column_if_missing("individuals", "last_seen_ts", "REAL DEFAULT 0")
+        self._add_column_if_missing("individuals", "last_refresh_ts", "REAL DEFAULT 0")
+        self._add_column_if_missing("prototypes", "created_ts", "REAL DEFAULT 0")
 
     def add_individual(self, species: str, vector: np.ndarray, weight: float = 1.0) -> int:
         cur = self.conn.cursor()
-        cur.execute("INSERT INTO individuals(species) VALUES (?)", (species,))
+        now_ts = time.time()
+        cur.execute("INSERT INTO individuals(species, last_seen_ts, last_refresh_ts) VALUES (?, ?, ?)", (species, now_ts, now_ts))
         individual_id = cur.lastrowid
-        self.add_prototype(individual_id, vector, weight)
+        self.add_prototype(individual_id, vector, weight, created_ts=now_ts)
         self._ensure_stats_row(individual_id)
         self.conn.commit()
         return int(individual_id)
 
-    def add_prototype(self, individual_id: int, vector: np.ndarray, weight: float = 1.0) -> None:
+    def add_prototype(self, individual_id: int, vector: np.ndarray, weight: float = 1.0, created_ts: float | None = None) -> None:
         blob = _serialize_vector(vector)
+        created_ts = time.time() if created_ts is None else created_ts
         self.conn.execute(
-            "INSERT INTO prototypes(individual_id, vector, weight) VALUES (?, ?, ?)",
-            (individual_id, blob, float(weight)),
+            "INSERT INTO prototypes(individual_id, vector, weight, created_ts) VALUES (?, ?, ?, ?)",
+            (individual_id, blob, float(weight), float(created_ts)),
         )
         self.conn.commit()
 
@@ -137,12 +154,12 @@ class BirdIDDatabase:
         is_match = best_dist < threshold
         return MatchResult(individual_id=best_id, distance=best_dist, confidence=confidence, second_best=second, is_match=is_match, has_prototypes=True)
 
-    def update_prototype(self, individual_id: int, new_vec: np.ndarray, ema: float, max_prototypes: int) -> None:
+    def update_prototype(self, individual_id: int, new_vec: np.ndarray, ema: float, max_prototypes: int, now_ts: float | None = None) -> None:
         cur = self.conn.cursor()
         cur.execute("SELECT vector, weight, rowid FROM prototypes WHERE individual_id=?", (individual_id,))
         rows = cur.fetchall()
         if not rows:
-            self.add_prototype(individual_id, new_vec)
+            self.add_prototype(individual_id, new_vec, created_ts=now_ts)
             return
         # Update first prototype with EMA
         blob, weight, rowid = rows[0]
@@ -150,10 +167,32 @@ class BirdIDDatabase:
         merged = (1 - ema) * old_vec + ema * new_vec
         merged /= np.linalg.norm(merged) + 1e-8
         cur.execute("UPDATE prototypes SET vector=?, weight=? WHERE rowid=?", (_serialize_vector(merged), weight, rowid))
+        if now_ts is not None:
+            self.mark_refreshed(individual_id, now_ts)
         # Keep prototype count bounded
         if len(rows) >= max_prototypes:
             return
-        cur.execute("INSERT INTO prototypes(individual_id, vector, weight) VALUES (?, ?, ?)", (individual_id, _serialize_vector(new_vec), weight))
+        cur.execute("INSERT INTO prototypes(individual_id, vector, weight, created_ts) VALUES (?, ?, ?, ?)", (individual_id, _serialize_vector(new_vec), weight, float(now_ts or time.time())))
+        self.conn.commit()
+        if now_ts is not None:
+            self.mark_refreshed(individual_id, now_ts)
+
+    def mark_seen(self, individual_id: int, now_ts: float) -> None:
+        self.conn.execute("UPDATE individuals SET last_seen_ts=? WHERE id=?", (now_ts, individual_id))
+        self.conn.commit()
+
+    def last_refresh_ts(self, individual_id: int) -> float:
+        cur = self.conn.cursor()
+        cur.execute("SELECT last_refresh_ts FROM individuals WHERE id=?", (individual_id,))
+        row = cur.fetchone()
+        return float(row[0] or 0.0) if row else 0.0
+
+    def is_refresh_stale(self, individual_id: int, now_ts: float, days: int) -> bool:
+        last = self.last_refresh_ts(individual_id)
+        return (now_ts - last) >= days * 86400
+
+    def mark_refreshed(self, individual_id: int, now_ts: float) -> None:
+        self.conn.execute("UPDATE individuals SET last_refresh_ts=? WHERE id=?", (now_ts, individual_id))
         self.conn.commit()
 
     def _reset_stats_if_needed(self, individual_id: int, today: str) -> None:
