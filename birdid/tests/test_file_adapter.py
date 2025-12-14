@@ -1,7 +1,9 @@
+import io
+
 import numpy as np
 import pytest
 
-from birdid.inputs.file_adapter import build_inputs
+from birdid.inputs.file_adapter import build_inputs, load_rgb_image
 
 
 def test_build_inputs_with_npy_depth(tmp_path):
@@ -58,3 +60,22 @@ def test_bbox_none_defaults_full_frame(tmp_path):
 
     inputs = build_inputs(rgb_path, depth_path, species="finch", bbox_xyxy=None)
     assert inputs.bbox_xyxy == [0, 0, 5, 3]
+
+
+def test_rgb_loader_rewinds_stream(tmp_path):
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    rgb = np.zeros((4, 4, 3), dtype=np.uint8)
+    rgb[..., 1] = 128
+    buf = io.BytesIO()
+    Image.fromarray(rgb).save(buf, format="PNG")
+
+    # Simulate Streamlit UploadedFile being read multiple times
+    # Single buffer reused twice (seeking should be handled internally)
+    shared = io.BytesIO(buf.getvalue())
+    img1 = load_rgb_image(shared)
+    img2 = load_rgb_image(shared)
+
+    assert img1.shape == img2.shape == (4, 4, 3)
+    assert img1[0, 0, 1] == 128

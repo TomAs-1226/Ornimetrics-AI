@@ -33,7 +33,22 @@ def _read_bytes(src) -> bytes:
     if isinstance(src, (str, Path)):
         return Path(src).read_bytes()
     if hasattr(src, "read"):
-        return src.read()
+        try:
+            pos = src.tell()
+        except Exception:
+            pos = None
+        try:
+            if hasattr(src, "seek"):
+                src.seek(0)
+        except Exception:
+            pass
+        data = src.read()
+        try:
+            if hasattr(src, "seek"):
+                src.seek(0 if pos is None else pos)
+        except Exception:
+            pass
+        return data
     raise ValueError("Unsupported file-like object")
 
 
