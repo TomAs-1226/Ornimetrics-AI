@@ -119,9 +119,11 @@ def run_pipeline(
 ) -> tuple[dict, Optional[np.ndarray]]:
     calib = Calibration()
     segmenter = DepthSegmenter(min_valid_ratio=cfg.min_valid_ratio)
-    x1, y1, x2, y2 = calib.map_bbox(bbox, depth_frame.depth.shape)
-    depth_crop = depth_frame.depth[y1 : y2 + 1, x1 : x2 + 1]
-    valid_crop = depth_frame.valid[y1 : y2 + 1, x1 : x2 + 1]
+    # For the PC demo we avoid depth cropping to reduce "size_out_of_bounds"
+    # rejections when auto-detected boxes are too tight. Use the full depth
+    # frame while still honoring the bbox for overlays/metadata.
+    depth_crop = depth_frame.depth
+    valid_crop = depth_frame.valid
     depth_clean, mask = segmenter.segment(depth_crop, valid_crop)
     if mask.sum() == 0 and valid_crop.any():
         LOGGER.info("Segmentation empty; using raw valid depth crop as fallback")
