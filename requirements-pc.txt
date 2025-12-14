@@ -2,8 +2,14 @@ numpy
 streamlit
 Pillow
 opencv-python
+open3d
+ultralytics
+torch
+torchvision
+pytorch-metric-learning
+scipy
+filterpy
+sqlite-utils
+# Optional: cloud storage hooks for demo uploads
 google-cloud-storage
 google-cloud-firestore
-open3d
-# Optional: auto species detection for PC demo
-ultralytics
