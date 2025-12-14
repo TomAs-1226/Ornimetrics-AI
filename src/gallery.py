@@ -46,7 +46,7 @@ class IdentityEntry:
 
 
 class Gallery:
-    def __init__(self, default_threshold: float = 0.3, margin_guard: float = 0.05, geometry_guard: float = 0.05):
+    def __init__(self, default_threshold: float = 0.05, margin_guard: float = 0.02, geometry_guard: float = 0.02):
         self.galleries: Dict[str, Dict[str, IdentityEntry]] = {}
         self.thresholds: Dict[str, float] = {}
         self.default_threshold = default_threshold

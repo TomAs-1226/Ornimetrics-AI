@@ -27,8 +27,9 @@ def parse_args():
     parser.add_argument("--model", default=None, help="YOLO model path (defaults to bundled best.pt when present)")
     parser.add_argument("--backbone", choices=["light", "heavy"], default="heavy", help="Point-cloud re-id backbone")
     parser.add_argument("--intrinsics", nargs=4, type=float, metavar=("fx", "fy", "cx", "cy"), default=[525.0, 525.0, 319.5, 239.5])
-    parser.add_argument("--threshold", type=float, default=0.3)
-    parser.add_argument("--margin-guard", type=float, default=0.05)
+    parser.add_argument("--threshold", type=float, default=0.05)
+    parser.add_argument("--margin-guard", type=float, default=0.02)
+    parser.add_argument("--geometry-guard", type=float, default=0.02)
     parser.add_argument("--debug_identity", action="store_true", help="Enable verbose identity debugging")
     parser.add_argument("--plane-removal", action="store_true", default=True)
     parser.add_argument("--no-plane-removal", dest="plane_removal", action="store_false")
@@ -228,7 +229,11 @@ def main():
         depth_gate_k=args.depth_gate_k,
     )
     embedder = PointReID(preprocess_config=preprocess_cfg, model_name=args.backbone)
-    gallery = Gallery(default_threshold=args.threshold, margin_guard=args.margin_guard)
+    gallery = Gallery(
+        default_threshold=args.threshold,
+        margin_guard=args.margin_guard,
+        geometry_guard=args.geometry_guard,
+    )
     tracker = Tracker(alpha=0.5, smooth_window=args.smooth_window)
     db = IdentityDB()
     debug_dir = ensure_debug_dir() if args.debug_identity else None

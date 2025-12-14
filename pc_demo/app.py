@@ -115,11 +115,15 @@ def _get_embedder(cfg: PreprocessConfig, backbone: str, emb_dims: int) -> PointR
     return st.session_state["embedder"]
 
 
-def _get_gallery(default_threshold: float, margin_guard: float) -> Gallery:
-    cfg_key = (default_threshold, margin_guard)
+def _get_gallery(default_threshold: float, margin_guard: float, geometry_guard: float) -> Gallery:
+    cfg_key = (default_threshold, margin_guard, geometry_guard)
     gal = st.session_state.get("gallery")
     if st.session_state.get("gallery_key") != cfg_key or gal is None:
-        gal = Gallery(default_threshold=default_threshold, margin_guard=margin_guard)
+        gal = Gallery(
+            default_threshold=default_threshold,
+            margin_guard=margin_guard,
+            geometry_guard=geometry_guard,
+        )
         st.session_state["gallery"] = gal
         st.session_state["gallery_key"] = cfg_key
     return gal
@@ -175,10 +179,12 @@ def main() -> None:
     cx = intrinsics_cols[2].number_input("cx", value=319.5)
     cy = intrinsics_cols[3].number_input("cy", value=239.5)
 
-    thr_col, margin_col, smooth_col = st.columns(3)
-    threshold = thr_col.number_input("Match threshold (cosine distance)", min_value=0.0, max_value=2.0, value=0.3, step=0.01)
-    margin_guard = margin_col.number_input("Margin guard", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
-    smooth_window = smooth_col.number_input("Embedding smooth window", min_value=1, max_value=20, value=5, step=1)
+    thr_col, margin_col, geom_col = st.columns(3)
+    threshold = thr_col.number_input("Match threshold (cosine distance)", min_value=0.0, max_value=2.0, value=0.05, step=0.005)
+    margin_guard = margin_col.number_input("Margin guard", min_value=0.0, max_value=1.0, value=0.02, step=0.005)
+    geometry_guard = geom_col.number_input("Geometry guard (Chamfer)", min_value=0.0, max_value=1.0, value=0.02, step=0.005)
+
+    smooth_window = st.number_input("Embedding smooth window", min_value=1, max_value=20, value=5, step=1)
 
     plane_removal = st.checkbox("Plane removal (RANSAC)", value=True)
     depth_gate_k = st.number_input("Depth gate k (MAD multiplier)", min_value=0.1, max_value=10.0, value=2.5, step=0.1)
@@ -206,7 +212,7 @@ def main() -> None:
     )
 
     embedder = _get_embedder(cfg, backbone=backbone, emb_dims=int(emb_dims))
-    gallery = _get_gallery(threshold, margin_guard)
+    gallery = _get_gallery(threshold, margin_guard, geometry_guard)
     tracker = _get_tracker(int(smooth_window))
     db = _get_db()
 
