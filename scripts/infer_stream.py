@@ -19,6 +19,7 @@ from src.db import IdentityDB
 from src.output_schema import format_detection
 from src.pc_preprocess import PreprocessConfig
 from src.bird_point_extractor import AntiSpoofConfig, BirdPointCloudExtractor, BirdExtractorConfig
+from src.multi_instance_depth import MultiInstanceConfig, MultiInstanceDepthProcessor
 
 
 def parse_args():
@@ -46,6 +47,14 @@ def parse_args():
     parser.add_argument("--anti-spoof-threshold", type=float, default=0.6, help="Threshold for anti-spoof score")
     parser.add_argument("--anti-spoof-model", type=Path, default=None, help="Optional TinyPointNet weights for anti-spoofing")
     parser.add_argument("--smooth-window", type=int, default=5)
+    parser.add_argument("--enable-multi-instance", action="store_true", help="Enable depth clustering assignment per detection")
+    parser.add_argument("--multi-voxel", type=float, default=0.01)
+    parser.add_argument("--multi-eps", type=float, default=0.03)
+    parser.add_argument("--multi-min-points", type=int, default=40)
+    parser.add_argument("--multi-min-iou", type=float, default=0.05)
+    parser.add_argument("--multi-max-cost", type=float, default=2.5)
+    parser.add_argument("--pi-profile", action="store_true", help="Pi-friendly settings for clustering and preprocessing")
+    parser.add_argument("--debug-multi-instance", action="store_true", help="Log clustering assignments and gating decisions")
     return parser.parse_args()
 
 
@@ -106,7 +115,9 @@ def save_debug_overlay(rgb, detections, debug_dir, frame_id=None):
         cv2.rectangle(bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cls = det.get("class_name", "")
         action = det.get("action") or det.get("decision_state")
-        label_parts = [p for p in [cls, action] if p]
+        cid = det.get("instance_cluster_id")
+        cid_txt = f"c{cid}" if cid is not None else None
+        label_parts = [p for p in [cls, cid_txt, action] if p]
         label = " | ".join(label_parts) if label_parts else cls
         if label:
             cv2.putText(bgr, label, (x1, max(y1 - 5, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -160,15 +171,48 @@ def process_frame(
     debug=False,
     return_debug=False,
     bird_extractor: Optional[BirdPointCloudExtractor] = None,
+    multi_instance: Optional[MultiInstanceDepthProcessor] = None,
+    debug_multi_instance: bool = False,
 ):
     detections = det_model.detect(rgb)
     processed = []
     frame_debug = []
-    for det in detections:
+    assignments = {}
+    multi_debug = {}
+    if multi_instance is not None:
+        assignments, multi_debug = multi_instance.assign_clusters(depth, intrinsics, detections, debug=debug_multi_instance)
+    for idx, det in enumerate(detections):
         bbox = det["bbox"]
         bp_stats = None
+        assign_info = assignments.get(idx, {}) if assignments else {}
+        pre_points = None
+        pre_stats = None
+        if assign_info:
+            if assign_info.get("cluster_id") is not None:
+                det["instance_cluster_id"] = assign_info.get("cluster_id")
+            if "birdness" in assign_info:
+                det["birdness"] = {"score": assign_info.get("birdness"), "stats": assign_info.get("stats", {})}
+                pre_stats = assign_info.get("stats", {})
+            if assign_info.get("deny_reason"):
+                det["deny_reason"] = assign_info.get("deny_reason")
+                det["decision_state"] = "rejected"
+                det["decision_reason"] = assign_info.get("deny_reason")
+                det["action"] = "rejected"
+                det["preprocess_stats"] = assign_info.get("stats", {})
+                det["embedding"] = np.zeros((embedder.model.emb_dims,), dtype=np.float32)
+                processed.append(det)
+                continue
+            pre_points = assign_info.get("points")
         if bird_extractor is not None:
-            extraction = bird_extractor.extract(rgb, depth, bbox, intrinsics, mask=det.get("mask"))
+            extraction = bird_extractor.extract(
+                rgb,
+                depth,
+                bbox,
+                intrinsics,
+                mask=det.get("mask"),
+                precluster_points=pre_points,
+                precluster_stats=pre_stats,
+            )
             det["birdness"] = {"score": extraction.quality, "stats": extraction.stats}
             bp_stats = BackprojectStats(
                 num_depth_pixels=int(extraction.stats.get("num_depth_pixels", 0)),
@@ -190,7 +234,17 @@ def process_frame(
                 processed.append(det)
                 continue
         else:
-            points, bp_stats = _points_from_depth(depth, intrinsics, bbox)
+            if pre_points is not None:
+                points = pre_points.astype(np.float32)
+                bp_stats = BackprojectStats(
+                    num_depth_pixels=int(pre_points.shape[0]),
+                    num_points_raw=int(pre_points.shape[0]),
+                    bbox=tuple(int(x) for x in bbox),
+                    depth_min=float(pre_points[:, 2].min()) if pre_points.size else 0.0,
+                    depth_max=float(pre_points[:, 2].max()) if pre_points.size else 0.0,
+                )
+            else:
+                points, bp_stats = _points_from_depth(depth, intrinsics, bbox)
         embed_result = embedder.embed(points)
         emb = embed_result.embedding.cpu().numpy()
         det["embedding"] = emb
@@ -284,7 +338,7 @@ def process_frame(
         frame_id = len(list(debug_dir.glob("frame_*.json")))
         overlay_path = save_debug_overlay(rgb, tracked, debug_dir, frame_id=frame_id)
         with open(debug_dir / f"frame_{frame_id:04d}.json", "w", encoding="utf-8") as f:
-            json.dump(frame_debug, f, indent=2, default=lambda o: o if isinstance(o, (int, float, str)) else str(o))
+            json.dump({"detections": frame_debug, "multi_instance": multi_debug}, f, indent=2, default=lambda o: o if isinstance(o, (int, float, str)) else str(o))
         if overlay_path is not None:
             print(f"Saved debug overlay: {overlay_path}")
         print(json.dumps(frame_debug, indent=2))
@@ -314,6 +368,18 @@ def main():
     db = IdentityDB()
     debug_dir = ensure_debug_dir() if args.debug_identity else None
     bird_extractor = None
+    multi_instance = None
+    mi_cfg = MultiInstanceConfig(
+        enabled=args.enable_multi_instance,
+        voxel_size=args.multi_voxel,
+        eps=args.multi_eps,
+        min_points=args.multi_min_points,
+        min_iou=args.multi_min_iou,
+        max_cost=args.multi_max_cost,
+        pi_profile=args.pi_profile,
+    )
+    if args.enable_multi_instance:
+        multi_instance = MultiInstanceDepthProcessor(mi_cfg)
     if args.use_bird_extractor:
         bird_extractor = BirdPointCloudExtractor(
             BirdExtractorConfig(
@@ -346,6 +412,8 @@ def main():
             args.smooth_window,
             debug=args.debug_identity,
             bird_extractor=bird_extractor,
+            multi_instance=multi_instance,
+            debug_multi_instance=args.debug_multi_instance,
             return_debug=True,
         )
         print(json.dumps(outputs, indent=2))
@@ -371,6 +439,8 @@ def main():
             args.smooth_window,
             debug=args.debug_identity,
             bird_extractor=bird_extractor,
+            multi_instance=multi_instance,
+            debug_multi_instance=args.debug_multi_instance,
             return_debug=True,
         )
         print(json.dumps(outputs, indent=2))
@@ -400,6 +470,8 @@ def main():
                 args.smooth_window,
                 debug=args.debug_identity,
                 bird_extractor=bird_extractor,
+                multi_instance=multi_instance,
+                debug_multi_instance=args.debug_multi_instance,
             )
             print(json.dumps(outputs))
     finally:

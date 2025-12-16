@@ -295,22 +295,29 @@ class BirdPointCloudExtractor:
         bbox: Tuple[float, float, float, float],
         intrinsics: Dict[str, float],
         mask: Optional[np.ndarray] = None,
+        precluster_points: Optional[np.ndarray] = None,
+        precluster_stats: Optional[Dict[str, float]] = None,
     ) -> BirdCloudResult:
         stats: Dict[str, float] = {}
         if depth is None or intrinsics is None:
             return BirdCloudResult(points=np.zeros((0, 3), dtype=np.float32), quality=0.0, stats=stats, deny_reason="depth_missing")
-        x1, y1, x2, y2 = map(int, bbox)
-        depth_crop = depth[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)]
-        if depth_crop.size == 0:
-            return BirdCloudResult(points=np.zeros((0, 3), dtype=np.float32), quality=0.0, stats=stats, deny_reason="depth_missing")
-        if self.cfg.use_mask and mask is not None:
-            if mask.shape[:2] != depth.shape:
-                raise ValueError("Mask shape must match depth map")
-            depth_crop = np.where(mask[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)], depth_crop, 0)
-        depth_crop = depth_crop.astype(np.float32)
-        depth_crop[~np.isfinite(depth_crop)] = 0
-        points, bp_stats = backproject_depth(depth_crop, intrinsics, None)
-        stats.update(bp_stats.__dict__)
+        if precluster_points is not None:
+            points = precluster_points.astype(np.float32)
+            if precluster_stats:
+                stats.update(precluster_stats)
+        else:
+            x1, y1, x2, y2 = map(int, bbox)
+            depth_crop = depth[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)]
+            if depth_crop.size == 0:
+                return BirdCloudResult(points=np.zeros((0, 3), dtype=np.float32), quality=0.0, stats=stats, deny_reason="depth_missing")
+            if self.cfg.use_mask and mask is not None:
+                if mask.shape[:2] != depth.shape:
+                    raise ValueError("Mask shape must match depth map")
+                depth_crop = np.where(mask[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)], depth_crop, 0)
+            depth_crop = depth_crop.astype(np.float32)
+            depth_crop[~np.isfinite(depth_crop)] = 0
+            points, bp_stats = backproject_depth(depth_crop, intrinsics, None)
+            stats.update(bp_stats.__dict__)
         points, gate_stats = self._depth_gate(points)
         stats.update(gate_stats)
         points, plane_ratio = self._remove_plane(points)
