@@ -14,6 +14,7 @@ from pytorch_metric_learning import losses, miners
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
 from src.models.dgcnn import DGCNN
 from src.models.dgcnn_heavy import DGCNNHeavy
+from src.models.point_transformer import PointTransformerLarge
 
 
 def load_ply(path: Path) -> np.ndarray:
@@ -94,6 +95,8 @@ class MetricTrainer:
         self.batch_size = batch_size
         if backbone == "heavy":
             self.model = DGCNNHeavy(emb_dims=max(emb_dims, 384)).to(self.device)
+        elif backbone == "xheavy":
+            self.model = PointTransformerLarge(emb_dims=max(emb_dims, 512)).to(self.device)
         else:
             self.model = DGCNN(emb_dims=emb_dims).to(self.device)
         if self.config.loss == "supcon":
@@ -170,7 +173,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--emb-dims", type=int, default=256)
-    parser.add_argument("--backbone", choices=["light", "heavy"], default="heavy")
+    parser.add_argument("--backbone", choices=["light", "heavy", "xheavy"], default="heavy")
     parser.add_argument("--loss", choices=["triplet", "supcon", "arcface"], default="supcon")
     parser.add_argument("--output", default="checkpoints/reid.pt")
     parser.add_argument("--k-individuals", type=int, default=8)

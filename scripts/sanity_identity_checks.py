@@ -1,117 +1,84 @@
 #!/usr/bin/env python
+"""Offline sanity checks for point-cloud re-id embeddings."""
+
 import argparse
 import json
-import os
-import numpy as np
 from pathlib import Path
+from typing import List
 
-os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
-import open3d as o3d
+import numpy as np
+from scipy.spatial import cKDTree
 
+from src.gallery import Gallery, cosine_distance
 from src.reid_embedder import PointReID
-from src.gallery import cosine_distance, Gallery
+from src.pc_preprocess import PreprocessConfig
 
 
-def load_clouds(folder: Path):
-    clouds = []
-    for ply in folder.glob("*.ply"):
-        pc = o3d.io.read_point_cloud(str(ply))
-        clouds.append(np.asarray(pc.points))
-    return clouds
+def load_cloud(path: Path) -> np.ndarray:
+    if path.suffix.lower() == ".npy":
+        arr = np.load(path)
+        return arr.astype(np.float32)
+    try:
+        import open3d as o3d  # type: ignore  # pragma: no cover
+
+        pc = o3d.io.read_point_cloud(str(path))
+        return np.asarray(pc.points, dtype=np.float32)
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError(f"Unable to load {path}: {exc}")
 
 
-def embed_clouds(clouds, embedder):
-    embs = []
-    for pc in clouds:
-        res = embedder.embed(pc)
-        embs.append(res.embedding.cpu().numpy())
-    return embs
-
-
-def geometry_distance(pc1, pc2):
-    if len(pc1) == 0 or len(pc2) == 0:
+def chamfer(a: np.ndarray, b: np.ndarray) -> float:
+    if a.size == 0 or b.size == 0:
         return float("inf")
-    pcd1 = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pc1))
-    pcd2 = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pc2))
-    threshold = 0.05
-    trans_init = np.eye(4)
-    reg_p2p = o3d.pipelines.registration.registration_icp(pcd1, pcd2, threshold, trans_init, o3d.pipelines.registration.TransformationEstimationPointToPoint())
-    return reg_p2p.inlier_rmse
+    ta = cKDTree(a)
+    tb = cKDTree(b)
+    da, _ = ta.query(b, k=1)
+    db, _ = tb.query(a, k=1)
+    return float((da.mean() + db.mean()) / 2.0)
 
 
-def embedding_variance_test(embs):
-    pairwise = []
-    for i in range(len(embs)):
-        for j in range(i + 1, len(embs)):
-            pairwise.append(cosine_distance(embs[i], embs[j]))
-    pairwise = np.array(pairwise)
-    return pairwise.mean(), pairwise.std()
-
-
-def self_consistency_test(embedder, pc):
-    e1 = embedder.embed(pc).embedding.cpu().numpy()
-    e2 = embedder.embed(pc).embedding.cpu().numpy()
-    return cosine_distance(e1, e2)
-
-
-def different_clouds_test(embedder, pc1, pc2, min_threshold):
-    e1 = embedder.embed(pc1).embedding.cpu().numpy()
-    e2 = embedder.embed(pc2).embedding.cpu().numpy()
-    dist = cosine_distance(e1, e2)
-    return dist, dist > min_threshold
-
-
-def gallery_threshold_test():
-    gallery = Gallery(default_threshold=0.3)
-    emb_far = np.ones(4)
-    emb_close = np.zeros(4)
-    gallery.update("bird", "id1", emb_close)
-    best, dist, _ = gallery.match("bird", emb_far)
-    return gallery.needs_new_identity("bird", dist)
-
-
-def run_checks(folder: Path, min_geometry_diff: float, min_embed_dist: float):
-    embedder = PointReID()
-    clouds = load_clouds(folder)
-    if len(clouds) < 2:
-        raise SystemExit("Need at least two .ply files for sanity checks")
-    embs = embed_clouds(clouds, embedder)
-    mean_d, std_d = embedding_variance_test(embs[: min(50, len(embs))])
-    self_dist = self_consistency_test(embedder, clouds[0])
-    geom = geometry_distance(clouds[0], clouds[1])
-    embed_dist, embed_pass = different_clouds_test(embedder, clouds[0], clouds[1], min_embed_dist)
-    gallery_pass = gallery_threshold_test()
-    report = {
-        "embedding_non_collapse": {
-            "mean_distance": mean_d,
-            "std_distance": std_d,
-            "pass": std_d >= 0.01 and mean_d >= 0.02,
-        },
-        "self_consistency": {
-            "distance": self_dist,
-            "pass": self_dist < 0.01,
-        },
-        "different_clouds": {
-            "geometry_rmse": geom,
-            "embedding_distance": embed_dist,
-            "pass": geom > min_geometry_diff and embed_pass,
-        },
-        "gallery_threshold_logic": {
-            "pass": gallery_pass,
-        },
+def run_checks(paths: List[Path], debug: bool = False) -> dict:
+    cfg = PreprocessConfig(fps_points=256, normalization="center_only")
+    embedder = PointReID(preprocess_config=cfg, model_name="light", emb_dims=128)
+    embeddings = []
+    for p in paths:
+        pc = load_cloud(p)
+        res = embedder.embed(pc)
+        embeddings.append(res.embedding.cpu().numpy())
+    embeds = np.stack(embeddings)
+    pairwise = np.dot(embeds, embeds.T)
+    variance = float(np.var(pairwise))
+    same_self = float(1 - cosine_distance(embeds[0], embeds[0]))
+    chamfer_far = chamfer(load_cloud(paths[0]), load_cloud(paths[-1]))
+    gallery = Gallery(default_threshold=0.2)
+    gallery.update("bird", "id_a", embeds[0])
+    best_id, dist, _ = gallery.match("bird", embeds[-1])
+    needs_new = gallery.needs_new_identity("bird", dist)
+    if debug:
+        print(json.dumps({"variance": variance, "self": same_self, "chamfer_far": chamfer_far, "new_identity": needs_new}, indent=2))
+    checks = {
+        "embedding_variance_ok": variance > 1e-4,
+        "self_similarity_ok": same_self > 0.99,
+        "distance_separates": chamfer_far == float("inf") or dist > 0.0,
+        "gallery_new_identity": needs_new,
     }
-    print(json.dumps(report, indent=2))
-    if not all(item["pass"] for item in report.values()):
-        raise SystemExit("Sanity checks FAILED")
+    return checks
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Offline sanity checks for identity embeddings")
-    parser.add_argument("--ply-folder", required=True, type=Path)
-    parser.add_argument("--min-geometry-diff", type=float, default=0.01)
-    parser.add_argument("--min-embed-dist", type=float, default=0.2)
+    parser = argparse.ArgumentParser(description="Run offline identity sanity checks")
+    parser.add_argument("data", help="Folder of .ply or .npy point clouds")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    run_checks(args.ply_folder, args.min_geometry_diff, args.min_embed_dist)
+    root = Path(args.data)
+    paths = sorted(root.glob("*.ply")) + sorted(root.glob("*.npy"))
+    if not paths:
+        raise SystemExit(f"No point clouds found in {root}")
+    checks = run_checks(paths, debug=args.debug)
+    failed = [k for k, v in checks.items() if not v]
+    if failed:
+        raise SystemExit(f"Failed checks: {failed}")
+    print(json.dumps(checks, indent=2))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import torch
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
 from src.models.dgcnn import DGCNN
 from src.models.dgcnn_heavy import DGCNNHeavy
+from src.models.point_transformer import PointTransformerLarge
 
 
 @dataclass
@@ -29,6 +30,9 @@ class PointReID:
         input_dims = 3 + int(self.preprocess_config.append_scale)
         if model_name == "heavy":
             self.model = DGCNNHeavy(emb_dims=max(emb_dims, 384), input_dims=input_dims).to(self.device)
+        elif model_name == "xheavy":
+            # Larger point-transformer encoder for offline training/evaluation.
+            self.model = PointTransformerLarge(emb_dims=max(emb_dims, 512), input_dims=input_dims).to(self.device)
         else:
             self.model = DGCNN(emb_dims=emb_dims, input_dims=input_dims).to(self.device)
         if model_path:

@@ -2,6 +2,11 @@ import numpy as np
 from src.gallery import Gallery, cosine_distance
 
 
+import numpy as np
+
+from src.gallery import Gallery, cosine_distance
+
+
 def test_gallery_threshold_new_identity():
     gallery = Gallery(default_threshold=0.3)
     emb1 = np.ones(4)

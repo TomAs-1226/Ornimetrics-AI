@@ -1,0 +1,352 @@
+"""Depth-driven bird-only point-cloud extraction with safety gating.
+
+All logic is optional and lives behind configuration flags so existing
+RGB+YOLO behaviour remains unchanged unless explicitly enabled.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+from scipy.spatial import cKDTree
+
+from src.depth_to_points import backproject_depth
+from src.pc_preprocess import _get_o3d
+
+
+DEFAULT_DENY = "low_confidence_cloud"
+
+
+class AntiSpoofScorer:
+    """Detect spoofed/planar/background-only point clouds.
+
+    Uses a tiny pointnet classifier when weights are provided; otherwise falls
+    back to heuristic cues derived from covariance eigenvalues and depth spread.
+    """
+
+    def __init__(self, config: AntiSpoofConfig):
+        self.config = config
+        self.model = None
+        self.torch = None
+        if self.config.model_path is not None and Path(self.config.model_path).exists():
+            try:
+                import torch
+                import torch.nn as nn
+            except Exception:  # pragma: no cover - torch might be unavailable
+                self.model = None
+                return
+
+            class TinyPointnet(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.conv1 = nn.Conv1d(3, 32, 1)
+                    self.conv2 = nn.Conv1d(32, 64, 1)
+                    self.conv3 = nn.Conv1d(64, 128, 1)
+                    self.head = nn.Sequential(
+                        nn.Linear(128, 64),
+                        nn.ReLU(),
+                        nn.Linear(64, 1),
+                        nn.Sigmoid(),
+                    )
+
+                def forward(self, x):
+                    x = torch.relu(self.conv1(x))
+                    x = torch.relu(self.conv2(x))
+                    x = torch.relu(self.conv3(x))
+                    x = torch.max(x, dim=2)[0]
+                    return self.head(x)
+
+            self.torch = torch
+            self.model = TinyPointnet()
+            state = torch.load(self.config.model_path, map_location="cpu")
+            missing, unexpected = self.model.load_state_dict(state, strict=False)
+            if missing or unexpected:  # pragma: no cover - logging only
+                print(f"[anti-spoof] Loaded with missing={missing} unexpected={unexpected}")
+            self.model.eval()
+
+    @staticmethod
+    def _covariance_features(points: np.ndarray, stats: Dict[str, float]) -> None:
+        if points.shape[0] < 3:
+            stats.update({
+                "anisotropy": 0.0,
+                "linearity": 0.0,
+                "omnivariance": 0.0,
+                "depth_std": 0.0,
+            })
+            return
+        centered = points - points.mean(axis=0)
+        cov = np.cov(centered.T)
+        eigvals, _ = np.linalg.eigh(cov)
+        eigvals = np.clip(np.sort(eigvals), 1e-8, None)
+        l1, l2, l3 = eigvals  # ascending
+        anisotropy = float((l3 - l1) / (l3 + 1e-6))
+        linearity = float((l3 - l2) / (l3 + 1e-6))
+        omnivariance = float((l1 * l2 * l3) ** (1 / 3))
+        depth_std = float(np.std(points[:, 2]))
+        surface_variation = float(l1 / (l1 + l2 + l3 + 1e-6))
+        stats.update({
+            "eig_min": float(l1),
+            "eig_mid": float(l2),
+            "eig_max": float(l3),
+            "anisotropy": anisotropy,
+            "linearity": linearity,
+            "omnivariance": omnivariance,
+            "depth_std": depth_std,
+            "surface_variation": surface_variation,
+        })
+
+    @staticmethod
+    def _heuristic_score(points: np.ndarray, stats: Dict[str, float]) -> float:
+        if points.shape[0] < 8:
+            return 0.0
+        extent_x, extent_y, extent_z = stats.get("extent_x", 0.0), stats.get("extent_y", 0.0), stats.get("extent_z", 0.0)
+        aspect = stats.get("aspect", 1.0)
+        planarity = stats.get("planarity", 1.0)
+        anisotropy = stats.get("anisotropy", 0.0)
+        depth_std = stats.get("depth_std", 0.0)
+        neighbour_density = stats.get("neighbor_density", 0.0)
+        depth_span = stats.get("depth_span", extent_z)
+        thickness = extent_z / (np.sqrt(extent_x * extent_y) + 1e-6)
+        planar_score = np.clip((planarity - 0.02) * 25.0, 0.0, 1.0)
+        aspect_reward = max(0.0, 1.0 - abs(aspect - 1.5) * 0.2)
+        depth_reward = np.clip(depth_std * 30.0, 0.0, 1.0)
+        thickness_reward = np.clip(thickness * 15.0, 0.0, 1.0)
+        anisotropy_reward = np.clip(anisotropy, 0.0, 1.0)
+        density_reward = np.clip(neighbour_density / 12.0, 0.0, 1.0)
+        span_penalty = np.clip(depth_span * 1.5, 0.0, 1.0)
+        score = (
+            0.15 * aspect_reward
+            + 0.2 * depth_reward
+            + 0.2 * thickness_reward
+            + 0.2 * anisotropy_reward
+            + 0.15 * density_reward
+            + 0.1 * planar_score
+        )
+        score *= (1.0 - 0.5 * span_penalty)
+        return float(np.clip(score, 0.0, 1.0))
+
+    def score(self, points: np.ndarray, stats: Dict[str, float]) -> float:
+        if points.size == 0:
+            return 0.0
+        self._covariance_features(points, stats)
+        if self.model is not None and self.torch is not None:
+            with self.torch.no_grad():
+                pc = self.torch.from_numpy(points.T).unsqueeze(0).float()
+                pred = self.model(pc)
+                return float(pred.squeeze().item())
+        return self._heuristic_score(points, stats)
+
+
+@dataclass
+class AntiSpoofConfig:
+    enabled: bool = False
+    threshold: float = 0.6
+    model_path: Optional[Path] = None
+    min_depth_std: float = 0.003
+    min_plane_removed_ratio: float = 0.05
+    max_depth_span: float = 0.5
+    min_neighbor_density: float = 6.0
+
+
+@dataclass
+class BirdExtractorConfig:
+    depth_gate_k: float = 2.5
+    plane_distance: float = 0.01
+    cluster_radius: float = 0.02
+    min_cluster_points: int = 64
+    planarity_ratio: float = 0.02
+    max_aspect_ratio: float = 6.0
+    max_depth_jump: float = 0.05
+    quality_floor: float = 0.2
+    allow_planar_override: bool = False
+    use_mask: bool = False
+    anti_spoof: AntiSpoofConfig = field(default_factory=AntiSpoofConfig)
+    debug_dir: Optional[Path] = None
+
+
+@dataclass
+class BirdCloudResult:
+    points: np.ndarray
+    quality: float
+    stats: Dict[str, float] = field(default_factory=dict)
+    deny_reason: Optional[str] = None
+
+
+class BirdPointCloudExtractor:
+    def __init__(self, config: Optional[BirdExtractorConfig] = None):
+        self.cfg = config or BirdExtractorConfig()
+        self.anti_spoof = AntiSpoofScorer(self.cfg.anti_spoof)
+        if self.cfg.debug_dir:
+            self.cfg.debug_dir.mkdir(parents=True, exist_ok=True)
+
+    def _depth_gate(self, points: np.ndarray) -> Tuple[np.ndarray, Dict[str, float]]:
+        stats: Dict[str, float] = {}
+        if points.size == 0:
+            return points, stats
+        depths = points[:, 2]
+        med = float(np.median(depths))
+        mad = float(np.median(np.abs(depths - med)) + 1e-6)
+        low, high = med - self.cfg.depth_gate_k * mad, med + self.cfg.depth_gate_k * mad
+        mask = (depths >= low) & (depths <= high)
+        gated = points[mask]
+        stats.update({"depth_median": med, "depth_mad": mad, "depth_low": low, "depth_high": high, "after_gate": float(len(gated))})
+        return gated, stats
+
+    def _remove_plane(self, points: np.ndarray) -> Tuple[np.ndarray, float]:
+        if points.shape[0] < 3:
+            return points, 0.0
+        o3d = _get_o3d()
+        if o3d is None:
+            return points, 0.0
+        cloud = o3d.geometry.PointCloud()
+        cloud.points = o3d.utility.Vector3dVector(points[:, :3])
+        plane_model, inliers = cloud.segment_plane(distance_threshold=self.cfg.plane_distance, ransac_n=3, num_iterations=32)
+        if not inliers:
+            return points, 0.0
+        outlier_pc = cloud.select_by_index(inliers, invert=True)
+        ratio = 1.0 - len(outlier_pc.points) / max(len(points), 1)
+        return np.asarray(outlier_pc.points), float(ratio)
+
+    def _cluster(self, points: np.ndarray) -> Tuple[np.ndarray, Dict[str, float]]:
+        if points.shape[0] == 0:
+            return points, {"num_clusters": 0}
+        tree = cKDTree(points)
+        visited = np.zeros(points.shape[0], dtype=bool)
+        clusters: List[np.ndarray] = []
+        for i in range(points.shape[0]):
+            if visited[i]:
+                continue
+            inds = tree.query_ball_point(points[i], self.cfg.cluster_radius)
+            stack = list(inds)
+            comp: List[int] = []
+            while stack:
+                idx = stack.pop()
+                if visited[idx]:
+                    continue
+                visited[idx] = True
+                comp.append(idx)
+                neighbours = tree.query_ball_point(points[idx], self.cfg.cluster_radius)
+                stack.extend([n for n in neighbours if not visited[n]])
+            clusters.append(np.asarray(comp, dtype=int))
+        clusters = sorted(clusters, key=lambda c: (-len(c), float(points[c, 2].min())))
+        best = clusters[0]
+        return points[best], {"num_clusters": len(clusters), "largest_cluster": float(len(best))}
+
+    def _neighbor_density(self, points: np.ndarray) -> float:
+        if points.shape[0] < 2:
+            return 0.0
+        tree = cKDTree(points)
+        counts = tree.query_ball_point(points, self.cfg.cluster_radius * 1.5, return_length=True)
+        return float(np.mean(counts))
+
+    def _shape_stats(self, points: np.ndarray) -> Dict[str, float]:
+        if points.size == 0:
+            return {"extent_x": 0.0, "extent_y": 0.0, "extent_z": 0.0, "compactness": 0.0, "aspect": 0.0, "planarity": 1.0}
+        centered = points - points.mean(axis=0)
+        cov = np.cov(centered.T)
+        eigvals, _ = np.linalg.eigh(cov)
+        eigvals = np.sort(eigvals)
+        planarity = float(eigvals[0] / (eigvals[2] + 1e-6)) if eigvals[2] > 0 else 1.0
+        extent = points.max(axis=0) - points.min(axis=0)
+        aspect = float(np.max(extent[:2]) / (np.min(extent[:2]) + 1e-6))
+        compactness = float(np.mean(np.linalg.norm(centered, axis=1)))
+        return {
+            "extent_x": float(extent[0]),
+            "extent_y": float(extent[1]),
+            "extent_z": float(extent[2]),
+            "compactness": compactness,
+            "aspect": aspect,
+            "planarity": planarity,
+            "depth_std": float(np.std(points[:, 2])),
+        }
+
+    def _quality(self, points: np.ndarray, stats: Dict[str, float]) -> Tuple[float, Optional[str]]:
+        if points.shape[0] < self.cfg.min_cluster_points:
+            return 0.0, "depth_missing"
+        if stats.get("planarity", 1.0) < self.cfg.planarity_ratio and not self.cfg.allow_planar_override:
+            return 0.0, "planar_surface"
+        if stats.get("aspect", 0.0) > self.cfg.max_aspect_ratio:
+            return 0.0, "inconsistent_depth_object"
+        if stats.get("extent_z", 0.0) > self.cfg.max_depth_jump:
+            return 0.0, "no_valid_cluster"
+        return max(self.cfg.quality_floor, 1.0 - stats.get("compactness", 0.0)), None
+
+    def _anti_spoof_guard(self, points: np.ndarray, stats: Dict[str, float]) -> Optional[str]:
+        cfg = self.cfg.anti_spoof
+        if points.shape[0] == 0:
+            return "spoof_background"
+        if stats.get("depth_std", 0.0) < cfg.min_depth_std:
+            return "spoof_background"
+        if stats.get("plane_removed_ratio", 0.0) < cfg.min_plane_removed_ratio and stats.get("planarity", 1.0) < self.cfg.planarity_ratio * 2:
+            return "planar_surface"
+        if stats.get("depth_span", 0.0) > cfg.max_depth_span and stats.get("surface_variation", 0.0) < 0.05:
+            return "spoof_background"
+        if stats.get("neighbor_density", 0.0) < cfg.min_neighbor_density:
+            return "spoof_background"
+        return None
+
+    def extract(
+        self,
+        rgb: np.ndarray,
+        depth: np.ndarray,
+        bbox: Tuple[float, float, float, float],
+        intrinsics: Dict[str, float],
+        mask: Optional[np.ndarray] = None,
+        precluster_points: Optional[np.ndarray] = None,
+        precluster_stats: Optional[Dict[str, float]] = None,
+    ) -> BirdCloudResult:
+        stats: Dict[str, float] = {}
+        if depth is None or intrinsics is None:
+            return BirdCloudResult(points=np.zeros((0, 3), dtype=np.float32), quality=0.0, stats=stats, deny_reason="depth_missing")
+        if precluster_points is not None:
+            points = precluster_points.astype(np.float32)
+            if precluster_stats:
+                stats.update(precluster_stats)
+        else:
+            x1, y1, x2, y2 = map(int, bbox)
+            depth_crop = depth[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)]
+            if depth_crop.size == 0:
+                return BirdCloudResult(points=np.zeros((0, 3), dtype=np.float32), quality=0.0, stats=stats, deny_reason="depth_missing")
+            if self.cfg.use_mask and mask is not None:
+                if mask.shape[:2] != depth.shape:
+                    raise ValueError("Mask shape must match depth map")
+                depth_crop = np.where(mask[max(y1, 0) : max(y2, 0), max(x1, 0) : max(x2, 0)], depth_crop, 0)
+            depth_crop = depth_crop.astype(np.float32)
+            depth_crop[~np.isfinite(depth_crop)] = 0
+            points, bp_stats = backproject_depth(depth_crop, intrinsics, None)
+            stats.update(bp_stats.__dict__)
+        points, gate_stats = self._depth_gate(points)
+        stats.update(gate_stats)
+        points, plane_ratio = self._remove_plane(points)
+        stats["plane_removed_ratio"] = float(plane_ratio)
+        clustered, cluster_stats = self._cluster(points)
+        stats.update(cluster_stats)
+        shape = self._shape_stats(clustered)
+        stats.update(shape)
+        stats["neighbor_density"] = self._neighbor_density(clustered)
+        stats["depth_span"] = float(stats.get("depth_high", 0.0) - stats.get("depth_low", 0.0))
+        quality, deny = self._quality(clustered, stats)
+        if self.cfg.anti_spoof.enabled and deny is None:
+            deny = self._anti_spoof_guard(clustered, stats)
+        if self.cfg.anti_spoof.enabled and deny is None:
+            spoof_score = self.anti_spoof.score(clustered, stats)
+            stats["anti_spoof_score"] = spoof_score
+            if spoof_score < self.cfg.anti_spoof.threshold:
+                deny = "spoof_background"
+        result = BirdCloudResult(points=clustered.astype(np.float32), quality=quality, stats=stats, deny_reason=deny)
+        if self.cfg.debug_dir is not None:
+            idx = len(list(self.cfg.debug_dir.glob("frame_*.json")))
+            with open(self.cfg.debug_dir / f"frame_{idx:04d}.json", "w", encoding="utf-8") as f:
+                json.dump({"bbox": bbox, "quality": quality, "deny_reason": deny, "stats": stats}, f, indent=2)
+        return result
+
+
+__all__ = [
+    "BirdPointCloudExtractor",
+    "BirdCloudResult",
+    "BirdExtractorConfig",
+    "AntiSpoofConfig",
+]
