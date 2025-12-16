@@ -74,3 +74,40 @@ python scripts/build_dataset_from_pairs.py --source raw_pairs/ --output data/
 - Matching uses cosine distance with per-class thresholds and margin guards to decide new individuals.
 - Tracker blends motion + appearance and smooths embeddings over multiple frames to reduce ID flicker.
 - Geometry baseline (ICP RMSE) is used in sanity checks to verify point clouds carry identity signal.
+
+## Feeder live status (Firebase, ToF sensors)
+
+Run in mock (PC) mode:
+
+```bash
+python scripts/run_status_service.py --feeder_id FEEDER123 --mock --mock_scenario clog_then_clear --debug
+```
+
+Run on Raspberry Pi with hardware sensors (CircuitPython VL53L0X):
+
+```bash
+python scripts/run_status_service.py --feeder_id FEEDER123 --pi --empty_on 320 --empty_off 180 --clog_on 35 --clog_off 90
+```
+
+Live status is published to Firestore at `feeders/{feeder_id}/status/current` and mirrored under `status/history/events` with a revision counter and timestamps. Schema:
+
+```
+{
+  feeder_id: string,
+  state: "OK" | "FOOD_EMPTY" | "CLOGGED" | "NEEDS_CLEANING" | "ERROR",
+  food_empty: bool,
+  clogged: bool,
+  needs_cleaning: bool,
+  tof_food_mm: number|null,
+  tof_clog_mm: number|null,
+  thresholds: {empty_on_mm, empty_off_mm, clog_on_mm, clog_off_mm},
+  confidence: number,
+  reason: string,
+  updated_at: ISO8601 string,
+  revision: int,
+  sensor_health: {food_sensor: {ok, last_read_ok_at}, clog_sensor: {ok, last_read_ok_at}},
+  last_cleaned_at: ISO8601|null
+}
+```
+
+Priorities are ERROR > CLOGGED > FOOD_EMPTY > NEEDS_CLEANING > OK with hysteresis/debounce around the thresholds. Cleaning reminders trigger when the configured days/events thresholds are reached. Existing Firebase event logging remains unchanged; the status store reuses the same Firebase initialisation logic.
