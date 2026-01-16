@@ -88,5 +88,13 @@
   "logging": {
     "quiet_mode": false,
     "log_level": "INFO"
+  },
+  "web": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5000,
+    "stream_fps": 15,
+    "dashboard_enabled": true,
+    "api_enabled": true
   }
 }

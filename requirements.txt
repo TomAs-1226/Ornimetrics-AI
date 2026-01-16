@@ -9,3 +9,5 @@ scipy
 filterpy
 sqlite-utils
 pytest
+flask
+flask-cors
