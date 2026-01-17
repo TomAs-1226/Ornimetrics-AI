@@ -1,0 +1,75 @@
+{
+  "training": {
+    "enabled": true,
+    "schedule": {
+      "mode": "time_based",
+      "start_time": "23:00",
+      "end_time": "05:00",
+      "timezone": "America/New_York",
+      "min_training_hours": 2,
+      "max_training_hours": 6
+    },
+    "data_collection": {
+      "min_samples_per_species": 50,
+      "max_samples_per_species": 1000,
+      "quality_threshold": 0.7,
+      "validation_split": 0.2,
+      "augmentation_enabled": true
+    },
+    "model": {
+      "architecture": "DGCNN",
+      "embedding_dim": 512,
+      "epochs": 50,
+      "batch_size": 16,
+      "learning_rate": 0.001,
+      "early_stopping_patience": 10,
+      "checkpoint_every_n_epochs": 5
+    },
+    "validation": {
+      "enabled": true,
+      "baseline_accuracy_threshold": 0.85,
+      "improvement_threshold": 0.02,
+      "test_samples_per_species": 20,
+      "max_test_time_minutes": 30
+    },
+    "deployment": {
+      "auto_deploy_on_pass": true,
+      "keep_previous_versions": 1,
+      "rollback_on_accuracy_drop": true,
+      "min_accuracy_for_deployment": 0.80
+    }
+  },
+  "data_quality": {
+    "filters": {
+      "min_points": 200,
+      "max_points": 10000,
+      "min_valid_ratio": 0.5,
+      "planarity_max": 0.3,
+      "thickness_min": 0.01,
+      "thickness_max": 0.30,
+      "size_min_m": 0.03,
+      "size_max_m": 0.35
+    },
+    "bird_validation": {
+      "use_yolo_confidence": true,
+      "min_yolo_confidence": 0.6,
+      "check_aspect_ratio": true,
+      "check_3d_structure": true,
+      "reject_anomalies": true
+    }
+  },
+  "night_mode": {
+    "enabled": true,
+    "disable_tof_display": true,
+    "reduce_detection_frequency": true,
+    "detection_fps": 2,
+    "log_level": "WARNING"
+  },
+  "notifications": {
+    "training_started": true,
+    "training_completed": true,
+    "model_deployed": true,
+    "training_failed": true,
+    "validation_failed": true
+  }
+}
