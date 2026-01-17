@@ -483,6 +483,58 @@ def print_completion_message(config: Dict):
     print(f"{Colors.GREEN}Happy bird watching! 🐦{Colors.RESET}\n")
 
 
+
+def install_autostart_service() -> bool:
+    """Install systemd service for auto-start on boot."""
+    print(f"\n{Colors.BOLD}8. Installing Auto-Start Service{Colors.RESET}")
+    print("=" * 50)
+
+    install_script = SCRIPT_DIR / "install_service_auto.sh"
+
+    if not install_script.exists():
+        print(f"{Colors.YELLOW}⚠️{Colors.RESET}  Auto-install script not found, skipping")
+        print(f"{Colors.BLUE}ℹ️{Colors.RESET}  To install manually later:")
+        print(f"   sudo ./install_service.sh")
+        return True
+
+    try:
+        # Make script executable
+        subprocess.run(["chmod", "+x", str(install_script)], check=True)
+
+        print(f"{Colors.CYAN}Installing systemd service for auto-start...{Colors.RESET}")
+
+        # Run installation script with sudo
+        result = subprocess.run(
+            ["sudo", str(install_script)],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode == 0:
+            print(f"{Colors.GREEN}✅{Colors.RESET} Auto-start service installed")
+            print(f"{Colors.GREEN}✅{Colors.RESET} Ornimetrics OS will start automatically on every boot")
+            return True
+        else:
+            logger.error(f"Service installation failed: {result.stderr}")
+            print(f"{Colors.YELLOW}⚠️{Colors.RESET}  Service installation failed (non-critical)")
+            print(f"{Colors.BLUE}ℹ️{Colors.RESET}  You can install manually:")
+            print(f"   sudo ./install_service.sh")
+            return True  # Don't fail OOBE
+
+    except subprocess.TimeoutExpired:
+        logger.error("Service installation timed out")
+        print(f"{Colors.YELLOW}⚠️{Colors.RESET}  Service installation timed out")
+        return True
+
+    except Exception as e:
+        logger.error(f"Service installation error: {e}")
+        print(f"{Colors.YELLOW}⚠️{Colors.RESET}  Could not install auto-start service: {e}")
+        print(f"{Colors.BLUE}ℹ️{Colors.RESET}  You can install manually:")
+        print(f"   sudo ./install_service.sh")
+        return True  # Don't fail OOBE
+
+
 def main():
     """Main OOBE setup routine for Ornimetrics OS."""
     os.chdir(SCRIPT_DIR)
@@ -533,6 +585,9 @@ def main():
 
     # Step 7: Generate prototypes
     generate_species_prototypes()
+
+    # Step 8: Install auto-start service
+    install_autostart_service()
 
     # Save completion marker
     config = load_config()  # Reload to get updates
