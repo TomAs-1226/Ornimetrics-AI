@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""
+Generate synthetic 3D point cloud prototypes for supported bird species.
+
+This creates initial PLY models based on species characteristics (size, shape, etc.)
+to seed the individual bird identification system. Real bird data will replace these
+as individual birds are enrolled.
+"""
+
+import json
+import numpy as np
+from pathlib import Path
+from typing import Dict, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def generate_bird_point_cloud(
+    size_cm: float,
+    weight_g: float,
+    body_type: str = "standard"
+) -> np.ndarray:
+    """
+    Generate a synthetic point cloud for a bird based on physical characteristics.
+
+    Args:
+        size_cm: Typical body length in centimeters
+        weight_g: Typical weight in grams
+        body_type: Body shape type (standard, compact, elongated, crested)
+
+    Returns:
+        Nx3 numpy array of 3D points (in meters)
+    """
+    # Convert size to meters for point cloud
+    base_scale = size_cm / 100.0
+
+    # Adjust based on weight (denser birds have more points)
+    density_factor = np.sqrt(weight_g / 30.0)  # 30g is baseline
+    num_points = int(1000 * density_factor)
+    num_points = np.clip(num_points, 500, 3000)
+
+    # Generate ellipsoid body shape
+    # Bird body proportions: length > width > height
+    if body_type == "compact":
+        # Rounder birds (chickadees, nuthatches)
+        length_ratio = 1.0
+        width_ratio = 0.8
+        height_ratio = 0.7
+    elif body_type == "elongated":
+        # Longer birds (wrens, thrashers)
+        length_ratio = 1.3
+        width_ratio = 0.6
+        height_ratio = 0.6
+    elif body_type == "crested":
+        # Birds with crests (cardinals, jays, titmice)
+        length_ratio = 1.1
+        width_ratio = 0.7
+        height_ratio = 0.9  # Taller due to crest
+    elif body_type == "woodpecker":
+        # Vertical posture birds
+        length_ratio = 1.2
+        width_ratio = 0.7
+        height_ratio = 1.0
+    else:
+        # Standard proportions
+        length_ratio = 1.0
+        width_ratio = 0.7
+        height_ratio = 0.7
+
+    # Generate points in unit sphere first
+    points = []
+    while len(points) < num_points:
+        # Sample from unit sphere
+        x = np.random.randn()
+        y = np.random.randn()
+        z = np.random.randn()
+
+        # Normalize to unit sphere
+        norm = np.sqrt(x**2 + y**2 + z**2)
+        if norm < 1e-6:
+            continue
+
+        x, y, z = x/norm, y/norm, z/norm
+
+        # Scale to ellipsoid
+        x *= length_ratio * base_scale * 0.5
+        y *= width_ratio * base_scale * 0.5
+        z *= height_ratio * base_scale * 0.5
+
+        # Bias towards core (more dense in center)
+        if np.random.rand() < 0.7:  # 70% points in core
+            x *= np.random.uniform(0.3, 0.8)
+            y *= np.random.uniform(0.3, 0.8)
+            z *= np.random.uniform(0.3, 0.8)
+
+        points.append([x, y, z])
+
+    points = np.array(points, dtype=np.float32)
+
+    # Add some noise for realism
+    noise_scale = base_scale * 0.02
+    points += np.random.normal(0, noise_scale, points.shape).astype(np.float32)
+
+    # Center the point cloud
+    points -= points.mean(axis=0)
+
+    return points
+
+
+def get_body_type(feature_notes: str) -> str:
+    """Infer body type from feature notes."""
+    notes_lower = feature_notes.lower()
+
+    if "crest" in notes_lower or "crested" in notes_lower:
+        return "crested"
+    elif "compact" in notes_lower or "round" in notes_lower:
+        return "compact"
+    elif "elongated" in notes_lower or "slender" in notes_lower:
+        return "elongated"
+    elif "woodpecker" in notes_lower or "vertical" in notes_lower:
+        return "woodpecker"
+    else:
+        return "standard"
+
+
+def save_ply(points: np.ndarray, output_path: Path) -> None:
+    """Save point cloud to PLY format."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, 'w') as f:
+        # PLY header
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write(f"element vertex {len(points)}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("end_header\n")
+
+        # Write points
+        for point in points:
+            f.write(f"{point[0]:.6f} {point[1]:.6f} {point[2]:.6f}\n")
+
+    logger.info(f"Saved PLY model: {output_path} ({len(points)} points)")
+
+
+def generate_species_prototypes(
+    config_path: str = "species_3d_support.json",
+    output_dir: str = "data/species_prototypes"
+) -> Dict[str, Path]:
+    """
+    Generate synthetic point cloud prototypes for all supported species.
+
+    Args:
+        config_path: Path to species configuration JSON
+        output_dir: Directory to save PLY files
+
+    Returns:
+        Dictionary mapping species names to PLY file paths
+    """
+    logger.info(f"Loading species configuration from {config_path}")
+
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    supported = config.get("supported_species", {})
+    if not supported:
+        logger.warning("No supported species found in configuration")
+        return {}
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    generated = {}
+
+    for species_name, species_info in supported.items():
+        if not species_info.get("enabled", False):
+            logger.debug(f"Skipping disabled species: {species_name}")
+            continue
+
+        try:
+            size_cm = species_info["typical_size_cm"]
+            weight_g = species_info["typical_weight_g"]
+            feature_notes = species_info.get("feature_notes", "")
+
+            body_type = get_body_type(feature_notes)
+
+            # Generate 3 prototype variations per species for diversity
+            for variant in range(3):
+                # Add slight variations
+                size_var = size_cm * np.random.uniform(0.95, 1.05)
+                weight_var = weight_g * np.random.uniform(0.90, 1.10)
+
+                points = generate_bird_point_cloud(size_var, weight_var, body_type)
+
+                # Normalize species name for filename
+                safe_name = species_name.replace(" ", "_").replace("-", "_")
+                ply_path = output_path / f"{safe_name}_prototype_{variant}.ply"
+
+                save_ply(points, ply_path)
+
+                if variant == 0:  # Store first variant as primary
+                    generated[species_name] = ply_path
+
+            logger.info(f"Generated 3 prototypes for {species_name} "
+                       f"(size={size_cm}cm, weight={weight_g}g, type={body_type})")
+
+        except Exception as e:
+            logger.error(f"Failed to generate prototype for {species_name}: {e}")
+            continue
+
+    logger.info(f"Generated {len(generated)} species prototypes in {output_dir}")
+    return generated
+
+
+def main():
+    """Main entry point."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s'
+    )
+
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Generate synthetic bird point cloud prototypes"
+    )
+    parser.add_argument(
+        "--config",
+        default="species_3d_support.json",
+        help="Path to species configuration JSON"
+    )
+    parser.add_argument(
+        "--output",
+        default="data/species_prototypes",
+        help="Output directory for PLY files"
+    )
+    args = parser.parse_args()
+
+    generated = generate_species_prototypes(args.config, args.output)
+
+    print(f"\n✅ Successfully generated prototypes for {len(generated)} species")
+    print(f"📁 Output directory: {args.output}")
+    print("\nGenerated species:")
+    for species in sorted(generated.keys()):
+        print(f"  - {species}")
+
+
+if __name__ == "__main__":
+    main()

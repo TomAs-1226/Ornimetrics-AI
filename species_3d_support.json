@@ -1,0 +1,268 @@
+{
+  "_comment": "Species that support 3D individual bird recognition",
+  "_description": "This file defines which species have 3D model support for individual identification. Species marked 'enabled: true' will use point cloud matching for individual recognition.",
+
+  "supported_species": {
+    "Cardinal": {
+      "enabled": true,
+      "common_name": "Northern Cardinal",
+      "scientific_name": "Cardinalis cardinalis",
+      "typical_size_cm": 22,
+      "typical_weight_g": 45,
+      "feature_notes": "Distinctive crest, robust body shape, medium-sized songbird",
+      "individual_detection_quality": "excellent"
+    },
+    "northern-cardinal": {
+      "enabled": true,
+      "common_name": "Northern Cardinal",
+      "scientific_name": "Cardinalis cardinalis",
+      "typical_size_cm": 22,
+      "typical_weight_g": 45,
+      "feature_notes": "Distinctive crest, robust body shape, medium-sized songbird",
+      "individual_detection_quality": "excellent"
+    },
+    "Blue_Jay": {
+      "enabled": true,
+      "common_name": "Blue Jay",
+      "scientific_name": "Cyanocitta cristata",
+      "typical_size_cm": 28,
+      "typical_weight_g": 85,
+      "feature_notes": "Large crest, robust build, distinctive head shape",
+      "individual_detection_quality": "excellent"
+    },
+    "blue-jay": {
+      "enabled": true,
+      "common_name": "Blue Jay",
+      "scientific_name": "Cyanocitta cristata",
+      "typical_size_cm": 28,
+      "typical_weight_g": 85,
+      "feature_notes": "Large crest, robust build, distinctive head shape",
+      "individual_detection_quality": "excellent"
+    },
+    "American_Goldfinch": {
+      "enabled": true,
+      "common_name": "American Goldfinch",
+      "scientific_name": "Spinus tristis",
+      "typical_size_cm": 13,
+      "typical_weight_g": 14,
+      "feature_notes": "Small, compact body, distinctive conical bill",
+      "individual_detection_quality": "good"
+    },
+    "carolina-chickadee": {
+      "enabled": true,
+      "common_name": "Carolina Chickadee",
+      "scientific_name": "Poecile carolinensis",
+      "typical_size_cm": 12,
+      "typical_weight_g": 11,
+      "feature_notes": "Small, round body, distinctive head shape with black cap",
+      "individual_detection_quality": "good"
+    },
+    "tufted-titmouse": {
+      "enabled": true,
+      "common_name": "Tufted Titmouse",
+      "scientific_name": "Baeolophus bicolor",
+      "typical_size_cm": 16,
+      "typical_weight_g": 21,
+      "feature_notes": "Distinctive crest, compact body, medium-small songbird",
+      "individual_detection_quality": "excellent"
+    },
+    "White_Breasted_Nuthatch": {
+      "enabled": true,
+      "common_name": "White-breasted Nuthatch",
+      "scientific_name": "Sitta carolinensis",
+      "typical_size_cm": 14,
+      "typical_weight_g": 20,
+      "feature_notes": "Compact body, short tail, distinctive head-down posture",
+      "individual_detection_quality": "very good"
+    },
+    "white-breasted-nuthatch": {
+      "enabled": true,
+      "common_name": "White-breasted Nuthatch",
+      "scientific_name": "Sitta carolinensis",
+      "typical_size_cm": 14,
+      "typical_weight_g": 20,
+      "feature_notes": "Compact body, short tail, distinctive head-down posture",
+      "individual_detection_quality": "very good"
+    },
+    "House_Sparrow": {
+      "enabled": true,
+      "common_name": "House Sparrow",
+      "scientific_name": "Passer domesticus",
+      "typical_size_cm": 16,
+      "typical_weight_g": 30,
+      "feature_notes": "Chunky build, short tail, robust body",
+      "individual_detection_quality": "good"
+    },
+    "Downy_Woodpecker": {
+      "enabled": true,
+      "common_name": "Downy Woodpecker",
+      "scientific_name": "Dryobates pubescens",
+      "typical_size_cm": 17,
+      "typical_weight_g": 27,
+      "feature_notes": "Distinctive vertical posture, compact body, small woodpecker",
+      "individual_detection_quality": "very good"
+    },
+    "dark-eyed-junco": {
+      "enabled": true,
+      "common_name": "Dark-eyed Junco",
+      "scientific_name": "Junco hyemalis",
+      "typical_size_cm": 15,
+      "typical_weight_g": 20,
+      "feature_notes": "Rounded head, medium-small, distinctive body proportions",
+      "individual_detection_quality": "good"
+    },
+    "dark_Eyed_Junco": {
+      "enabled": true,
+      "common_name": "Dark-eyed Junco",
+      "scientific_name": "Junco hyemalis",
+      "typical_size_cm": 15,
+      "typical_weight_g": 20,
+      "feature_notes": "Rounded head, medium-small, distinctive body proportions",
+      "individual_detection_quality": "good"
+    },
+    "Chipping_Sparrow": {
+      "enabled": true,
+      "common_name": "Chipping Sparrow",
+      "scientific_name": "Spizella passerina",
+      "typical_size_cm": 14,
+      "typical_weight_g": 12,
+      "feature_notes": "Small, slender build, distinctive head pattern",
+      "individual_detection_quality": "good"
+    },
+    "chipping-sparrow": {
+      "enabled": true,
+      "common_name": "Chipping Sparrow",
+      "scientific_name": "Spizella passerina",
+      "typical_size_cm": 14,
+      "typical_weight_g": 12,
+      "feature_notes": "Small, slender build, distinctive head pattern",
+      "individual_detection_quality": "good"
+    },
+    "Song_Sparrow": {
+      "enabled": true,
+      "common_name": "Song Sparrow",
+      "scientific_name": "Melospiza melodia",
+      "typical_size_cm": 16,
+      "typical_weight_g": 20,
+      "feature_notes": "Medium build, rounded body, distinctive streaking",
+      "individual_detection_quality": "good"
+    },
+    "song-sparrow": {
+      "enabled": true,
+      "common_name": "Song Sparrow",
+      "scientific_name": "Melospiza melodia",
+      "typical_size_cm": 16,
+      "typical_weight_g": 20,
+      "feature_notes": "Medium build, rounded body, distinctive streaking",
+      "individual_detection_quality": "good"
+    },
+    "Eastern_Towhee": {
+      "enabled": true,
+      "common_name": "Eastern Towhee",
+      "scientific_name": "Pipilo erythrophthalmus",
+      "typical_size_cm": 20,
+      "typical_weight_g": 40,
+      "feature_notes": "Large, robust body, long tail, distinctive shape",
+      "individual_detection_quality": "excellent"
+    },
+    "eastern-towhee": {
+      "enabled": true,
+      "common_name": "Eastern Towhee",
+      "scientific_name": "Pipilo erythrophthalmus",
+      "typical_size_cm": 20,
+      "typical_weight_g": 40,
+      "feature_notes": "Large, robust body, long tail, distinctive shape",
+      "individual_detection_quality": "excellent"
+    },
+    "Carolina_Wren": {
+      "enabled": true,
+      "common_name": "Carolina Wren",
+      "scientific_name": "Thryothorus ludovicianus",
+      "typical_size_cm": 14,
+      "typical_weight_g": 21,
+      "feature_notes": "Compact, plump body, upright tail, distinctive posture",
+      "individual_detection_quality": "very good"
+    },
+    "carolina-wren": {
+      "enabled": true,
+      "common_name": "Carolina Wren",
+      "scientific_name": "Thryothorus ludovicianus",
+      "typical_size_cm": 14,
+      "typical_weight_g": 21,
+      "feature_notes": "Compact, plump body, upright tail, distinctive posture",
+      "individual_detection_quality": "very good"
+    },
+    "Indigo_Bunting": {
+      "enabled": true,
+      "common_name": "Indigo Bunting",
+      "scientific_name": "Passerina cyanea",
+      "typical_size_cm": 14,
+      "typical_weight_g": 15,
+      "feature_notes": "Compact body, conical bill, small songbird",
+      "individual_detection_quality": "good"
+    },
+    "indigo-bunting": {
+      "enabled": true,
+      "common_name": "Indigo Bunting",
+      "scientific_name": "Passerina cyanea",
+      "typical_size_cm": 14,
+      "typical_weight_g": 15,
+      "feature_notes": "Compact body, conical bill, small songbird",
+      "individual_detection_quality": "good"
+    },
+    "Rose_Breasted_Grosbeak": {
+      "enabled": true,
+      "common_name": "Rose-breasted Grosbeak",
+      "scientific_name": "Pheucticus ludovicianus",
+      "typical_size_cm": 20,
+      "typical_weight_g": 47,
+      "feature_notes": "Large, robust body, massive bill, distinctive proportions",
+      "individual_detection_quality": "excellent"
+    },
+    "Northern_Flicker": {
+      "enabled": true,
+      "common_name": "Northern Flicker",
+      "scientific_name": "Colaptes auratus",
+      "typical_size_cm": 32,
+      "typical_weight_g": 130,
+      "feature_notes": "Large woodpecker, distinctive spotted pattern, robust build",
+      "individual_detection_quality": "excellent"
+    }
+  },
+
+  "quality_levels": {
+    "excellent": {
+      "description": "Large or distinctive birds with unique body shapes and features",
+      "min_size_cm": 18,
+      "expected_accuracy": 0.95
+    },
+    "very good": {
+      "description": "Medium birds with characteristic features and proportions",
+      "min_size_cm": 13,
+      "expected_accuracy": 0.90
+    },
+    "good": {
+      "description": "Small to medium birds with some distinctive features",
+      "min_size_cm": 10,
+      "expected_accuracy": 0.85
+    }
+  },
+
+  "future_expansion": {
+    "_comment": "Species to add 3D support for in future releases",
+    "high_priority": [
+      "Red_Bellied_Woodpecker",
+      "Painted_Bunting",
+      "Baltimore_Oriole",
+      "Scarlet_Tanager",
+      "Cedar_Waxwing"
+    ],
+    "medium_priority": [
+      "American_Goldfinch",
+      "Purple_Finch",
+      "House_Wren",
+      "Gray_Catbird",
+      "Brown_Thrasher"
+    ]
+  }
+}

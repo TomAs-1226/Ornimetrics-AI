@@ -39,6 +39,23 @@ echo "║     3D Individual Recognition + AI Acceleration       ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
+# Check for OOBE (Out Of Box Experience) completion
+if [ ! -f ".oobe_completed" ]; then
+    log_info "First time setup detected..."
+    log_info "Running OOBE (Out Of Box Experience) setup..."
+    echo ""
+
+    if [ -f "oobe_setup.py" ]; then
+        python3 oobe_setup.py || {
+            log_error "OOBE setup failed. Please run manually: python3 oobe_setup.py"
+            exit 1
+        }
+    else
+        log_warn "OOBE setup script not found, continuing anyway..."
+    fi
+    echo ""
+fi
+
 # Check Python
 log_info "Checking Python installation..."
 if ! command -v python3 &> /dev/null; then
