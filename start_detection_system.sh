@@ -34,18 +34,24 @@ log_error() {
 # Banner
 echo -e "${GREEN}"
 echo "╔═══════════════════════════════════════════════════════╗"
-echo "║     Ornimetrics Bird Detection System v2.0           ║"
-echo "║     3D Individual Recognition + AI Acceleration       ║"
+echo "║              ORNIMETRICS OS v1.0.0                    ║"
+echo "║     Smart Bird Feeder with Individual Recognition    ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
 # Check for OOBE (Out Of Box Experience) completion
 if [ ! -f ".oobe_completed" ]; then
-    log_info "First time setup detected..."
-    log_info "Running OOBE (Out Of Box Experience) setup..."
+    log_info "First time setup detected - Starting Ornimetrics OS OOBE..."
     echo ""
 
-    if [ -f "oobe_setup.py" ]; then
+    # Use Ornimetrics OS OOBE with Bluetooth setup
+    if [ -f "oobe_ornimetrics_os.py" ]; then
+        python3 oobe_ornimetrics_os.py || {
+            log_error "OOBE setup failed. Please run manually: python3 oobe_ornimetrics_os.py"
+            exit 1
+        }
+    elif [ -f "oobe_setup.py" ]; then
+        log_warn "Using legacy OOBE setup (Ornimetrics OS OOBE not found)..."
         python3 oobe_setup.py || {
             log_error "OOBE setup failed. Please run manually: python3 oobe_setup.py"
             exit 1
@@ -200,14 +206,14 @@ done
 
 # Start the server
 echo ""
-log_success "Starting Ornimetrics Detection System..."
+log_success "Starting Ornimetrics OS..."
 echo ""
 log_info "Dashboard will be available at:"
 echo -e "  ${GREEN}http://$HOST:$PORT/${NC}"
 echo ""
-log_info "API endpoints available at:"
-echo -e "  ${GREEN}http://$HOST:$PORT/api/status${NC}"
-echo -e "  ${GREEN}http://$HOST:$PORT/video_feed${NC}"
+log_info "Streaming endpoints:"
+echo -e "  MJPEG: ${GREEN}http://$HOST:$PORT/video_feed${NC}"
+echo -e "  API:   ${GREEN}http://$HOST:$PORT/api/status${NC}"
 echo ""
 log_info "Press Ctrl+C to stop"
 echo ""
