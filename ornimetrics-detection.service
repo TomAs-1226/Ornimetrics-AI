@@ -1,0 +1,37 @@
+[Unit]
+Description=Ornimetrics OS - Smart Bird Feeder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Ornimetrics-AI
+
+# Environment variables
+Environment="QT_QPA_PLATFORM=offscreen"
+Environment="DISPLAY=:0"
+Environment="OMP_NUM_THREADS=3"
+Environment="OPENBLAS_NUM_THREADS=1"
+Environment="MKL_NUM_THREADS=1"
+
+# Start command
+ExecStart=/usr/bin/python3 /home/pi/Ornimetrics-AI/web_detection_server.py --config /home/pi/Ornimetrics-AI/config_3d_detection.json
+
+# Restart policy - always restart if it crashes
+Restart=always
+RestartSec=10
+
+# Resource limits (adjust as needed)
+# Uncomment these if you want to limit resource usage
+# MemoryMax=2G
+# CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ornimetrics-os
+
+[Install]
+WantedBy=multi-user.target

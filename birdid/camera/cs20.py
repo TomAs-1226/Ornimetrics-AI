@@ -41,7 +41,7 @@ class CS20Camera:
     unavailable, synthetic depth is emitted so downstream tests can still run.
     """
 
-    def __init__(self, mode: str = "320x240", max_queue: int = 5):
+    def __init__(self, mode: str = "320x240", max_queue: int = 5, fallback_to_synthetic: bool = False):
         if mode not in {"320x240", "640x480"}:
             raise ValueError("mode must be '320x240' or '640x480'")
         self.mode = mode
@@ -49,6 +49,8 @@ class CS20Camera:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._device = None  # placeholder for vendor/OpenCV handle
+        self._fallback_to_synthetic = fallback_to_synthetic
+        self._hardware_available = False
 
     def _open_device(self) -> None:
         # Lazy import to avoid import errors when SDK is absent.
@@ -58,18 +60,36 @@ class CS20Camera:
             cv2 = None
         if cv2 is None:
             self._device = None
+            self._hardware_available = False
             return
         width, height = (320, 240) if self.mode == "320x240" else (640, 480)
-        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            self._device = cap
-        else:
-            self._device = None
+
+        # Try to detect CS20 depth camera specifically
+        # The CS20 camera usually appears on /dev/video0 or /dev/video1
+        for video_idx in [0, 1, 2]:
+            try:
+                cap = cv2.VideoCapture(video_idx, cv2.CAP_V4L2)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    # Try to read a test frame to verify it's actually working
+                    ok, frame = cap.read()
+                    if ok and frame is not None and frame.dtype == np.uint16:
+                        # Likely a depth camera with 16-bit depth data
+                        self._device = cap
+                        self._hardware_available = True
+                        return
+                    cap.release()
+            except Exception:
+                continue
+
+        self._device = None
+        self._hardware_available = False
 
     def _read_frame(self) -> Tuple[np.ndarray, np.ndarray]:
         if self._device is None:
+            if not self._fallback_to_synthetic:
+                raise RuntimeError("CS20 hardware not available and synthetic fallback disabled")
             # Synthetic plane with mild noise for CI
             width, height = (320, 240) if self.mode == "320x240" else (640, 480)
             depth = np.full((height, width), 0.4, dtype=_DEPTH_DTYPE)
@@ -144,3 +164,7 @@ class CS20Camera:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.stop()
+
+    def is_hardware_available(self) -> bool:
+        """Check if actual CS20 hardware was detected and is available."""
+        return self._hardware_available

@@ -1,0 +1,163 @@
+{
+  "_branding": {
+    "product_name": "Ornimetrics OS",
+    "version": "1.0.0",
+    "description": "Professional bird monitoring operating system with mobile app integration"
+  },
+
+  "system": {
+    "device_id": "ORNIMETRICS-{GENERATED_ON_FIRST_BOOT}",
+    "device_name": "My Bird Feeder",
+    "deployment_type": "raspberry_pi",
+    "os_version": "1.0.0"
+  },
+
+  "account": {
+    "linked": false,
+    "user_id": null,
+    "account_email": null,
+    "linked_timestamp": null,
+    "feeder_name": "Unnamed Feeder",
+    "sharing_enabled": false
+  },
+
+  "network": {
+    "static_ip_enabled": true,
+    "static_ip": "192.168.1.200",
+    "subnet_mask": "255.255.255.0",
+    "gateway": "192.168.1.1",
+    "dns_servers": ["8.8.8.8", "8.8.4.4"],
+    "wifi_configured": false,
+    "wifi_ssid": null,
+    "ethernet_enabled": true,
+    "hostname": "ornimetrics-os"
+  },
+
+  "bluetooth": {
+    "enabled": true,
+    "pairing_mode": "auto",
+    "device_name": "Ornimetrics OS",
+    "pin_required": true,
+    "pin_code": "1234",
+    "paired_devices": [],
+    "allow_setup_via_bluetooth": true,
+    "pairing_timeout_minutes": 10
+  },
+
+  "streaming": {
+    "enabled": true,
+    "local_network_only": true,
+    "protocols": {
+      "mjpeg": {
+        "enabled": true,
+        "port": 5000,
+        "endpoint": "/video_feed",
+        "quality": 85
+      },
+      "rtsp": {
+        "enabled": true,
+        "port": 8554,
+        "path": "/ornimetrics/stream",
+        "codec": "h264"
+      },
+      "hls": {
+        "enabled": false,
+        "port": 8080,
+        "segment_duration": 4
+      }
+    },
+    "authentication": {
+      "required": true,
+      "type": "account_token",
+      "token_expiry_hours": 24
+    }
+  },
+
+  "mobile_app": {
+    "pairing_required": true,
+    "allowed_operations": [
+      "setup_wifi",
+      "link_account",
+      "configure_feeder",
+      "view_stream",
+      "view_statistics",
+      "update_settings",
+      "trigger_training",
+      "manage_species"
+    ],
+    "communication": {
+      "bluetooth_commands": true,
+      "local_api": true,
+      "cloud_sync": false
+    }
+  },
+
+  "firebase": {
+    "enabled": true,
+    "structure": "user_based",
+    "database_url": "https://ornimetrics-default-rtdb.firebaseio.com",
+    "storage_bucket": "ornimetrics.appspot.com",
+    "path_template": "/users/{user_id}/feeders/{device_id}/",
+    "collections": {
+      "detections": "detections",
+      "individuals": "individuals",
+      "statistics": "statistics",
+      "images": "images",
+      "training_data": "training_data"
+    },
+    "privacy": {
+      "data_ownership": "user",
+      "sharing_opt_in": false,
+      "anonymize_shared_data": true
+    }
+  },
+
+  "data_privacy": {
+    "user_data_only": true,
+    "no_public_sharing": true,
+    "require_account_auth": true,
+    "local_processing": true,
+    "cloud_optional": true
+  },
+
+  "features": {
+    "detection": {
+      "enabled": true,
+      "requires_account": false
+    },
+    "individual_recognition": {
+      "enabled": true,
+      "requires_account": false
+    },
+    "training": {
+      "enabled": true,
+      "requires_account": false
+    },
+    "cloud_backup": {
+      "enabled": false,
+      "requires_account": true
+    },
+    "remote_monitoring": {
+      "enabled": false,
+      "requires_account": true
+    },
+    "multi_feeder_network": {
+      "enabled": false,
+      "requires_account": true
+    }
+  },
+
+  "oobe": {
+    "require_app_pairing": true,
+    "bluetooth_setup": true,
+    "allow_manual_setup": false,
+    "setup_steps": [
+      "bluetooth_pairing",
+      "account_linking",
+      "wifi_configuration",
+      "network_setup",
+      "feature_selection",
+      "initial_calibration"
+    ]
+  }
+}
