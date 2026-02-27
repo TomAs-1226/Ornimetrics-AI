@@ -141,27 +141,43 @@ def load_config(config_path: str = "config_3d_detection.json") -> Dict:
     except Exception as e:
         logger.warning(f"Failed to load config: {e}")
 
-    # Default config
+    # Default config (matches simplified config_3d_detection.json format)
     return {
         "detection": {
-            "model_path": "/home/pi/Desktop/FinalPrototype 2/FinalPrototype/GoodModel/weights(2).pt",
+            "model_path": "weights.pt",
             "confidence_threshold": 0.45,
             "input_size": 320
         },
         "camera": {
             "rgb": {"source": 0, "width": 640, "height": 480},
+            "rgb_source": 0, "width": 640, "height": 480,
             "depth": {"enabled": True, "mode": "320x240"}
         },
+        "depth": {"enabled": True, "mode": "320x240"},
         "point_cloud": {
-            "backbone": "heavy",
-            "intrinsics": {"fx": 525.0, "fy": 525.0, "cx": 319.5, "cy": 239.5}
+            "backbone": "light",
+            "intrinsics": {"fx": 525.0, "fy": 525.0, "cx": 319.5, "cy": 239.5},
+            "preprocessing": {
+                "plane_removal": True,
+                "normalization": "center_only",
+                "voxel_size": 0.01,
+                "fps_points": 1024,
+                "depth_gate_k": 2.5
+            }
         },
+        "intrinsics": {"fx": 525.0, "fy": 525.0, "cx": 319.5, "cy": 239.5},
         "individual_tracking": {
             "enabled": True,
             "database_path": "birdid.sqlite",
             "match_threshold": 0.32,
             "cooldown_seconds": 300,
             "max_dispenses_per_day": 20
+        },
+        "tracking": {
+            "database_path": "birdid.sqlite",
+            "match_threshold": 0.32,
+            "cooldown_seconds": 300,
+            "max_per_day": 20
         },
         "web": {
             "host": "0.0.0.0",

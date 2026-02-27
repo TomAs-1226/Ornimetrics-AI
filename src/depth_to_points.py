@@ -17,6 +17,7 @@ def backproject_depth(
     intrinsics: Dict[str, float],
     bbox: Optional[Tuple[float, float, float, float]] = None,
     max_points: int = 50000,
+    valid_mask: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, BackprojectStats]:
     """Convert a depth map to a 3D point cloud with cropping stats."""
     if depth is None:

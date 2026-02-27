@@ -1,62 +1,36 @@
 {
-  "description": "Configuration for 3D bird detection with individual recognition",
   "detection": {
-    "model_path": "/home/pi/Desktop/FinalPrototype 2/FinalPrototype/GoodModel/weights(2).pt",
-    "hailo_model_path": null,
+    "model_path": "weights.pt",
     "confidence_threshold": 0.45,
-    "input_size": 320,
-    "iou_threshold": 0.5
+    "input_size": 320
   },
   "camera": {
-    "rgb": {
-      "source": 0,
-      "width": 640,
-      "height": 480,
-      "fourcc": "MJPG",
-      "buffer_size": 1
-    },
-    "depth": {
-      "enabled": true,
-      "mode": "320x240",
-      "fallback_to_synthetic": false
-    }
+    "rgb_source": 0,
+    "width": 640,
+    "height": 480,
+    "fourcc": "MJPG"
+  },
+  "depth": {
+    "enabled": true,
+    "mode": "320x240"
   },
   "point_cloud": {
-    "backbone": "heavy",
-    "preprocessing": {
-      "plane_removal": true,
-      "normalization": "center_only",
-      "voxel_size": 0.01,
-      "fps_points": 2048,
-      "depth_gate_k": 2.5
-    },
-    "intrinsics": {
-      "fx": 525.0,
-      "fy": 525.0,
-      "cx": 319.5,
-      "cy": 239.5,
-      "note": "Adjust these values based on your camera calibration"
-    }
+    "backbone": "light",
+    "fps_points": 1024,
+    "voxel_size": 0.01,
+    "plane_removal": true
   },
-  "individual_tracking": {
-    "enabled": true,
+  "intrinsics": {
+    "fx": 525.0,
+    "fy": 525.0,
+    "cx": 319.5,
+    "cy": 239.5
+  },
+  "tracking": {
     "database_path": "birdid.sqlite",
     "match_threshold": 0.32,
-    "margin_guard": 0.02,
-    "geometry_guard": 0.02,
     "cooldown_seconds": 300,
-    "max_dispenses_per_day": 20,
-    "enroll_on_first_visit": true,
-    "require_validation": true
-  },
-  "validation": {
-    "min_points": 150,
-    "min_thickness_m": 0.01,
-    "max_thickness_m": 0.25,
-    "min_size_m": 0.04,
-    "max_size_m": 0.28,
-    "min_quality_score": 0.5,
-    "anti_spoof_enabled": true
+    "max_per_day": 20
   },
   "servo": {
     "channel": 1,
@@ -67,34 +41,25 @@
     "min_us": 1000,
     "max_us": 2000
   },
+  "trap_settings": "trap_settings_full.json",
   "firebase": {
     "enabled": true,
     "database_url": "https://ornimetrics-default-rtdb.firebaseio.com",
-    "session_key": "session_1",
-    "log_individuals": true,
-    "log_point_clouds": false
+    "session_key": "session_1"
   },
   "performance": {
     "max_fps": 12.0,
-    "process_every_n_frames": 1,
-    "log_fps_interval_sec": 20.0
+    "every_n_frames": 1
   },
   "display": {
-    "enabled": true,
+    "preview": true,
     "scale": 0.6,
-    "box_ttl_sec": 2.0,
-    "show_individual_names": true
-  },
-  "logging": {
-    "quiet_mode": false,
-    "log_level": "INFO"
+    "quiet": false
   },
   "web": {
     "enabled": true,
     "host": "0.0.0.0",
     "port": 5000,
-    "stream_fps": 15,
-    "dashboard_enabled": true,
-    "api_enabled": true
+    "stream_fps": 15
   }
 }

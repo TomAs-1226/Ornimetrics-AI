@@ -222,8 +222,8 @@ echo ""
 export QT_QPA_PLATFORM=offscreen
 export DISPLAY=:0
 
-# Start the server
-python3 web_detection_server.py \
+# Start the server (use unified run.py entry point)
+python3 run.py \
     --config "$CONFIG" \
-    --host "$HOST" \
+    --web \
     --port "$PORT"

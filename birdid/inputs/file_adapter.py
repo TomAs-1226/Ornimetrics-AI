@@ -124,22 +124,43 @@ def _convert_point_units(points: np.ndarray, units: str = "auto") -> np.ndarray:
     return pts
 
 
-def _depth_from_point_cloud(
-    src, grid: Tuple[int, int] = (240, 320), units: str = "auto"
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _load_ply_points(src) -> np.ndarray:
+    """Load point cloud from PLY/PCD file. Uses open3d if available, else numpy."""
+    data = _read_bytes(src)
+    # Try numpy-based PLY parsing first
+    try:
+        lines = data.split(b"\n")
+        header_end = 0
+        vertex_count = 0
+        is_binary_le = False
+        for i, line in enumerate(lines):
+            text = line.decode("ascii", errors="replace").strip()
+            if text.startswith("element vertex"):
+                vertex_count = int(text.split()[-1])
+            if "binary_little_endian" in text:
+                is_binary_le = True
+            if text == "end_header":
+                header_end = i
+                break
+        if vertex_count > 0:
+            header_bytes = b"\n".join(lines[: header_end + 1]) + b"\n"
+            body = data[len(header_bytes):]
+            if is_binary_le:
+                pts = np.frombuffer(body[: vertex_count * 12], dtype=np.float32)
+                return pts.reshape(vertex_count, -1)[:, :3].copy()
+            else:
+                text_lines = body.decode("ascii", errors="replace").strip().split("\n")
+                rows = [list(map(float, l.split()[:3])) for l in text_lines[:vertex_count]]
+                return np.array(rows, dtype=np.float32)
+    except Exception:
+        pass
+    # Fallback to open3d
     try:
         import open3d as o3d  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional dep
-        raise RuntimeError("open3d is required for point-cloud inputs") from exc
-    if isinstance(src, (str, Path)):
-        pc = o3d.io.read_point_cloud(str(src))
-    else:
-        # UploadedFile / BytesIO: persist to temp so Open3D can read it.
         import tempfile
-
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ply")
         try:
-            tmp.write(_read_bytes(src))
+            tmp.write(data)
             tmp.flush()
             pc = o3d.io.read_point_cloud(tmp.name)
         finally:
@@ -149,7 +170,19 @@ def _depth_from_point_cloud(
                 Path(path).unlink(missing_ok=True)
             except Exception:
                 pass
-    pts = _convert_point_units(np.asarray(pc.points), units=units)
+        return np.asarray(pc.points, dtype=np.float32)
+    except Exception as exc:
+        raise RuntimeError("Cannot load point cloud file (install open3d for full format support)") from exc
+
+
+def _depth_from_point_cloud(
+    src, grid: Tuple[int, int] = (240, 320), units: str = "auto"
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if isinstance(src, (str, Path)):
+        raw_pts = _load_ply_points(src)
+    else:
+        raw_pts = _load_ply_points(src)
+    pts = _convert_point_units(raw_pts, units=units)
     if pts.size == 0:
         depth = np.zeros(grid, dtype=np.float32)
         return depth, np.zeros_like(depth, dtype=bool), pts

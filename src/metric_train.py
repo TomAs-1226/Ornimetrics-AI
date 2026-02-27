@@ -8,7 +8,6 @@ from datetime import datetime
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import open3d as o3d
 from pytorch_metric_learning import losses, miners
 
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
@@ -17,8 +16,44 @@ from src.models.dgcnn_heavy import DGCNNHeavy
 
 
 def load_ply(path: Path) -> np.ndarray:
-    pc = o3d.io.read_point_cloud(str(path))
-    return np.asarray(pc.points)
+    """Load PLY point cloud file using numpy. Falls back to open3d if available."""
+    try:
+        return _load_ply_numpy(path)
+    except Exception:
+        pass
+    try:
+        import open3d as o3d  # type: ignore
+        pc = o3d.io.read_point_cloud(str(path))
+        return np.asarray(pc.points)
+    except Exception as exc:
+        raise RuntimeError(f"Cannot load PLY file {path}") from exc
+
+
+def _load_ply_numpy(path: Path) -> np.ndarray:
+    """Minimal binary/ASCII PLY reader for XYZ-only point clouds."""
+    with open(path, "rb") as f:
+        header_lines = []
+        while True:
+            line = f.readline().decode("ascii", errors="replace").strip()
+            header_lines.append(line)
+            if line == "end_header":
+                break
+        vertex_count = 0
+        is_binary_le = False
+        for line in header_lines:
+            if line.startswith("element vertex"):
+                vertex_count = int(line.split()[-1])
+            if "binary_little_endian" in line:
+                is_binary_le = True
+        if vertex_count == 0:
+            return np.zeros((0, 3), dtype=np.float32)
+        if is_binary_le:
+            data = np.frombuffer(f.read(vertex_count * 12), dtype=np.float32)
+            return data.reshape(vertex_count, -1)[:, :3].copy()
+        else:
+            lines_data = f.read().decode("ascii", errors="replace").strip().split("\n")
+            rows = [list(map(float, l.split()[:3])) for l in lines_data[:vertex_count]]
+            return np.array(rows, dtype=np.float32)
 
 
 @dataclass

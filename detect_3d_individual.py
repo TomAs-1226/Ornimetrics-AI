@@ -316,7 +316,7 @@ def main():
     ap.add_argument(
         "--backbone",
         choices=["light", "heavy"],
-        default="heavy",
+        default="light",
         help="Point cloud backbone model",
     )
 

@@ -1,20 +1,13 @@
-import os
+"""Point cloud preprocessing pipeline — pure numpy, no Open3D dependency.
+
+Designed for low-latency inference on Raspberry Pi with Hailo AI module.
+All operations use vectorized numpy for speed on ARM CPUs.
+"""
 from dataclasses import dataclass
 from typing import Tuple, Optional, Dict
 import numpy as np
 
-# Force headless Open3D to avoid libGL issues in minimal environments
-os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
-def _get_o3d():
-    os.environ.setdefault("OPEN3D_CPU_DISABLE_GL", "1")
-    try:  # pragma: no cover - import guard
-        import open3d as o3d  # type: ignore
-
-        return o3d
-    except Exception:
-        return None
-
-DEFAULT_POINTS = 2048
+DEFAULT_POINTS = 1024
 
 
 @dataclass
@@ -24,7 +17,7 @@ class PreprocessConfig:
     voxel_size: float = 0.01
     fps_points: int = DEFAULT_POINTS
     depth_gate_k: float = 2.5
-    normalization: str = "center_only"  # options: center_only, center_and_scale, center_and_scale_with_scale_feature
+    normalization: str = "center_only"
     append_scale: bool = False
     random_seed: int = 0
 
@@ -45,28 +38,35 @@ def _get_rng(seed: int) -> np.random.Generator:
     return rng_cache[seed]
 
 
-def _to_o3d(pc: np.ndarray):
-    o3d = _get_o3d()
-    if o3d is None:
-        return None
-    cloud = o3d.geometry.PointCloud()
-    cloud.points = o3d.utility.Vector3dVector(pc)
-    return cloud
-
-
 def _remove_plane(pc: np.ndarray, distance: float) -> Tuple[np.ndarray, float]:
-    if pc.shape[0] < 10:
+    """RANSAC plane removal using pure numpy."""
+    n = pc.shape[0]
+    if n < 10:
         return pc, 0.0
-    cloud = _to_o3d(pc)
-    if cloud is None:
+    rng = np.random.default_rng(42)
+    best_inlier_mask = None
+    best_count = 0
+    iters = 50
+    for _ in range(iters):
+        idx = rng.choice(n, 3, replace=False)
+        p0, p1, p2 = pc[idx[0]], pc[idx[1]], pc[idx[2]]
+        normal = np.cross(p1 - p0, p2 - p0)
+        norm_len = np.linalg.norm(normal)
+        if norm_len < 1e-10:
+            continue
+        normal /= norm_len
+        d = -np.dot(normal, p0)
+        dists = np.abs(pc @ normal + d)
+        inlier_mask = dists < distance
+        count = int(inlier_mask.sum())
+        if count > best_count:
+            best_count = count
+            best_inlier_mask = inlier_mask
+    if best_inlier_mask is None or best_count == 0:
         return pc, 0.0
-    plane_model, inliers = cloud.segment_plane(distance_threshold=distance, ransac_n=3, num_iterations=50)
-    if len(inliers) == 0:
-        return pc, 0.0
-    inlier_pc = cloud.select_by_index(inliers)
-    outlier_pc = cloud.select_by_index(inliers, invert=True)
-    removed_ratio = 1.0 - (len(outlier_pc.points) / max(len(pc), 1))
-    return np.asarray(outlier_pc.points), removed_ratio
+    outliers = pc[~best_inlier_mask]
+    removed_ratio = 1.0 - (len(outliers) / max(n, 1))
+    return outliers, removed_ratio
 
 
 def _depth_gate(pc: np.ndarray, k: float) -> Tuple[np.ndarray, float, float]:
@@ -84,13 +84,16 @@ def _depth_gate(pc: np.ndarray, k: float) -> Tuple[np.ndarray, float, float]:
 
 
 def _voxel_down(pc: np.ndarray, voxel_size: float) -> np.ndarray:
-    if pc.shape[0] == 0:
+    """Voxel downsampling using integer grid hashing — pure numpy."""
+    if pc.shape[0] == 0 or voxel_size <= 0:
         return pc
-    cloud = _to_o3d(pc)
-    if cloud is None:
-        return pc
-    down = cloud.voxel_down_sample(voxel_size)
-    return np.asarray(down.points)
+    keys = np.floor(pc / voxel_size).astype(np.int64)
+    # Use structured array for unique voxel lookup
+    _, unique_idx = np.unique(
+        keys[:, 0] * 1000003 + keys[:, 1] * 1000033 + keys[:, 2],
+        return_index=True,
+    )
+    return pc[np.sort(unique_idx)]
 
 
 def _farthest_point_sample(pc: np.ndarray, n: int, seed: int) -> np.ndarray:
@@ -99,7 +102,7 @@ def _farthest_point_sample(pc: np.ndarray, n: int, seed: int) -> np.ndarray:
     n = min(n, pc.shape[0])
     rng = _get_rng(seed)
     centroids = np.zeros((n,), dtype=np.int64)
-    distance = np.ones((pc.shape[0],)) * 1e10
+    distance = np.full(pc.shape[0], 1e10)
     farthest = 0
     for i in range(n):
         centroids[i] = farthest

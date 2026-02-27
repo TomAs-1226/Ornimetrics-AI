@@ -1,14 +1,19 @@
+# Core detection
 ultralytics
 torch
 torchvision
 numpy
 opencv-python
-open3d
-pytorch-metric-learning
-scipy
-filterpy
+
+# Individual tracking database
 sqlite-utils
-pytest
+
+# Web dashboard
 flask
 flask-cors
-pytz
+
+# Testing
+pytest
+
+# Training only (install separately if needed):
+#   pip install pytorch-metric-learning
