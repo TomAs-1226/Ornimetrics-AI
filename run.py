@@ -36,7 +36,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 
 DEFAULTS = {
-    "detection": {"model_path": "weights.pt", "confidence_threshold": 0.45, "input_size": 320},
+    "detection": {"model_path": "models/model.hef", "confidence_threshold": 0.45, "input_size": 320},
     "camera": {"rgb_source": 0, "width": 640, "height": 480, "fourcc": "MJPG"},
     "individual_camera": {"enabled": False, "source": 1, "width": 640, "height": 480},
     "depth": {"enabled": True, "source": "mono", "mode": "320x240", "mono_model": "auto", "mono_input_size": 256},
@@ -87,6 +87,58 @@ def _resolve(p: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Model auto-update watcher
+# ---------------------------------------------------------------------------
+
+class _ModelWatcher:
+    """Watches the models/ directory for updated .hef files.
+
+    Checks the mtime of the current model file and the models/ directory
+    periodically. If a newer model is detected, calls detector.reload_model().
+    """
+
+    def __init__(self, detector, check_interval: float = 30.0):
+        self._detector = detector
+        self._interval = check_interval
+        self._last_check = 0.0
+        self._known_mtime = 0.0
+        self._model_dir = SCRIPT_DIR / "models"
+        # Record initial mtime
+        current = detector.get_model_path() if hasattr(detector, 'get_model_path') else None
+        if current and Path(current).is_file():
+            self._known_mtime = Path(current).stat().st_mtime
+
+    def check(self):
+        """Call periodically from the main loop. Reloads model if a newer file exists."""
+        now = time.time()
+        if now - self._last_check < self._interval:
+            return
+        self._last_check = now
+
+        if not self._model_dir.is_dir():
+            return
+
+        # Find the newest .hef file in models/
+        best_path = None
+        best_mtime = 0.0
+        for hef in self._model_dir.glob("*.hef"):
+            mt = hef.stat().st_mtime
+            if mt > best_mtime:
+                best_mtime = mt
+                best_path = hef
+
+        if best_path and best_mtime > self._known_mtime:
+            print(f"[UPDATE] New model detected: {best_path.name} — reloading...")
+            if hasattr(self._detector, 'reload_model'):
+                ok = self._detector.reload_model(str(best_path))
+                if ok:
+                    self._known_mtime = best_mtime
+                    print(f"[UPDATE] Model reloaded: {self._detector.get_backend_name()}")
+                else:
+                    print(f"[UPDATE] Reload failed — keeping current model")
+
+
+# ---------------------------------------------------------------------------
 # Trap-settings helpers  (unchanged logic)
 # ---------------------------------------------------------------------------
 
@@ -128,51 +180,25 @@ def _action_for(label: str, cfg: dict, conf_default: float) -> dict:
 # ---------------------------------------------------------------------------
 
 def _init_detector(cfg: dict):
-    """Initialize YOLO detector (Hailo or PyTorch)."""
-    model_path = _resolve(_get(cfg, "detection", "model_path", default="weights.pt"))
+    """Initialize YOLO detector (Hailo or PyTorch).
+
+    Model resolution order:
+      1. Config ``detection.model_path`` (can be .hef or .pt)
+      2. ``models/model.hef``  then ``models/model.pt``
+      3. ``models/best.hef``   then ``models/best.pt``
+      4. Legacy root: ``weights.pt``, ``best.pt``
+    The HailoYOLODetector handles all of this via find_model().
+    """
+    model_path = _get(cfg, "detection", "model_path", default="models/model.hef")
     conf = _get(cfg, "detection", "confidence_threshold", default=0.45)
     imgsz = _get(cfg, "detection", "input_size", default=320)
 
-    try:
-        from src.hailo_detector import HailoYOLODetector
-        if Path(model_path).suffix == ".hef":
-            det = HailoYOLODetector(model_path=model_path, fallback_pytorch_model=model_path.replace(".hef", ".pt"), confidence_threshold=conf, input_size=imgsz)
-        else:
-            det = HailoYOLODetector(model_path=None, fallback_pytorch_model=model_path, confidence_threshold=conf, input_size=imgsz)
-        return det
-    except Exception:
-        pass
-
-    # Fallback: direct ultralytics
-    from ultralytics import YOLO
-    _yolo = YOLO(model_path)
-
-    class _Wrapper:
-        def __init__(self, model, names, conf_thr, imgsz):
-            self._model = model
-            self._names = names
-            self._conf = conf_thr
-            self._imgsz = imgsz
-        def detect(self, image):
-            import torch
-            with torch.inference_mode():
-                res = self._model.predict(source=image, imgsz=self._imgsz, conf=self._conf, iou=0.5, verbose=False)
-            dets = []
-            if res:
-                r0 = res[0]
-                if hasattr(r0, "boxes") and r0.boxes is not None and len(r0.boxes):
-                    xyxy = r0.boxes.xyxy.cpu().numpy().astype(int)
-                    confs = r0.boxes.conf.cpu().numpy()
-                    clss = r0.boxes.cls.cpu().numpy().astype(int)
-                    for (x1, y1, x2, y2), c, cid in zip(xyxy, confs, clss):
-                        name = self._names[cid] if 0 <= cid < len(self._names) else f"class_{cid}"
-                        dets.append({"bbox": (int(x1), int(y1), int(x2), int(y2)), "class_name": name, "class_id": int(cid), "confidence": float(c)})
-            return dets
-        def is_hailo_active(self): return False
-        def get_backend_name(self): return "PyTorch CPU"
-
-    names = list(_yolo.names.values()) if isinstance(_yolo.names, dict) else list(_yolo.names) if hasattr(_yolo, "names") else []
-    return _Wrapper(_yolo, names, conf, imgsz)
+    from src.hailo_detector import HailoYOLODetector
+    return HailoYOLODetector(
+        model_path=model_path,
+        confidence_threshold=conf,
+        input_size=imgsz,
+    )
 
 
 def _init_depth(cfg: dict):
@@ -392,21 +418,39 @@ def _init_3d(cfg: dict):
 
 
 def _init_servo(cfg: dict):
+    """Initialize servo trap. Returns a ServoTrap or a no-op stub if hardware unavailable."""
     sv = _get(cfg, "servo", default={})
-    try:
-        from servoMain_fixed import ServoTrap
-    except Exception:
-        from servoMain import ServoTrap
-    return ServoTrap(
-        channel=sv.get("channel", 1),
-        closed_angle=sv.get("closed_angle", 5.0),
-        open_angle=sv.get("open_angle", 60.0),
-        min_inter_trigger_sec=sv.get("min_inter_trigger_sec", 1.5),
-        debug=not _get(cfg, "display", "quiet", default=False),
-        slew_deg_per_s=sv.get("slew_deg_per_s", 240.0),
-        min_us=sv.get("min_us", 1000),
-        max_us=sv.get("max_us", 2000),
-    )
+
+    # Try to load real servo
+    for module_name in ("servoMain_fixed", "servoMain"):
+        try:
+            mod = __import__(module_name)
+            return mod.ServoTrap(
+                channel=sv.get("channel", 1),
+                closed_angle=sv.get("closed_angle", 5.0),
+                open_angle=sv.get("open_angle", 60.0),
+                min_inter_trigger_sec=sv.get("min_inter_trigger_sec", 1.5),
+                debug=not _get(cfg, "display", "quiet", default=False),
+                slew_deg_per_s=sv.get("slew_deg_per_s", 240.0),
+                min_us=sv.get("min_us", 1000),
+                max_us=sv.get("max_us", 2000),
+            )
+        except Exception:
+            continue
+
+    # No servo hardware — return stub so the rest of the system works
+    print("[WARN] Servo hardware unavailable — running without trap door")
+
+    class _StubServo:
+        """No-op servo stub when adafruit_servokit or I2C not available."""
+        def trigger(self, **kw): return False
+        def tick(self): pass
+        def can_trigger(self, **kw): return True, "stub", 0.0, 0.0
+        def get_state(self): return {"last_angle": None, "target_angle": None, "hold_left": 0, "global_busy_left": 0, "species_cd_left": {}}
+        def open_now(self): pass
+        def close_now(self): pass
+
+    return _StubServo()
 
 
 def _init_firebase(cfg: dict):
@@ -425,7 +469,7 @@ def _init_firebase(cfg: dict):
 # Detection loop  (shared between headless, preview and web modes)
 # ---------------------------------------------------------------------------
 
-def _system_warnings(cfg: dict, depth_provider, indiv_cam, tracker, reid_backend: str) -> List[dict]:
+def _system_warnings(cfg: dict, detector, depth_provider, indiv_cam, tracker, reid_backend: str) -> List[dict]:
     """Collect system warnings for the phone app and web API.
 
     Returns a list of warning dicts, each with:
@@ -434,6 +478,23 @@ def _system_warnings(cfg: dict, depth_provider, indiv_cam, tracker, reid_backend
       - message: human-readable description
     """
     warnings = []
+
+    # Detection backend status
+    if detector is not None:
+        if hasattr(detector, 'is_hailo_active') and not detector.is_hailo_active():
+            backend = detector.get_backend_name() if hasattr(detector, 'get_backend_name') else "unknown"
+            if backend == "No backend loaded":
+                warnings.append({
+                    "code": "no_model",
+                    "level": "error",
+                    "message": "No detection model loaded — place model.hef in models/ folder",
+                })
+            elif "PyTorch" in backend:
+                warnings.append({
+                    "code": "no_hailo",
+                    "level": "warning",
+                    "message": "Hailo AI Hat+ not detected — running YOLO on CPU (slower). Install: sudo apt install hailo-all",
+                })
 
     # No depth sensor active
     if depth_provider is None:
@@ -585,7 +646,7 @@ def _process_frame(frame, detector, depth_provider, tracker, trap, trap_cfg, flo
 # Web mode
 # ---------------------------------------------------------------------------
 
-def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=None, reid_backend="none"):
+def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=None, reid_backend="none", model_watcher=None):  # noqa: E501
     from flask import Flask, Response, jsonify, render_template_string
 
     app = Flask(__name__)
@@ -620,6 +681,8 @@ def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv
                 if not ok2:
                     i_frame = None
             trap.tick()
+            if model_watcher:
+                model_watcher.check()
             t0 = _mono()
             shown, results = _process_frame(
                 frame, detector, depth_provider, tracker, trap, trap_cfg, flog,
@@ -708,7 +771,7 @@ def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv
     @app.route("/api/warnings")
     def warnings():
         return jsonify({
-            "warnings": _system_warnings(cfg, depth_provider, indiv_cam, tracker, reid_backend),
+            "warnings": _system_warnings(cfg, detector, depth_provider, indiv_cam, tracker, reid_backend),
         })
 
     host = _get(cfg, "web", "host", default="0.0.0.0")
@@ -798,6 +861,9 @@ def main():
     if flog:
         log("[INIT] Firebase enabled")
 
+    # Model auto-update watcher (checks models/ dir every 30s)
+    model_watcher = _ModelWatcher(detector)
+
     mode = f"Depth={depth_label} | ReID={reid_backend}"
     if indiv_cam:
         mode += " | DualCam"
@@ -806,7 +872,7 @@ def main():
     # Web mode
     if _get(cfg, "web", "enabled", default=False):
         try:
-            _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=indiv_cam, reid_backend=reid_backend)
+            _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=indiv_cam, reid_backend=reid_backend, model_watcher=model_watcher)
         except KeyboardInterrupt:
             pass
         finally:
@@ -851,6 +917,7 @@ def main():
                 time.sleep(0.01)
                 continue
             trap.tick()
+            model_watcher.check()
             t_now = _mono()
 
             if t_now - last_proc < 1.0 / max_fps:

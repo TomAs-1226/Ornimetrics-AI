@@ -253,6 +253,8 @@ periodically (e.g. every 30 seconds) to display status messages to the user.
 
 | Code | Level | Meaning |
 |------|-------|---------|
+| `no_model` | error | No detection model loaded — place `model.hef` in `models/` |
+| `no_hailo` | warning | Hailo AI Hat+ not detected, running on CPU (slower) |
 | `no_depth` | info | Depth processing disabled, appearance-only re-ID active |
 | `single_camera` | info | Single camera mode, main camera used for both detection and re-ID |
 | `no_reid` | warning | Individual recognition unavailable, birds not individually identified |
@@ -263,6 +265,41 @@ periodically (e.g. every 30 seconds) to display status messages to the user.
 
 The same warnings are also available via the Bluetooth `get_status` command
 (see Bluetooth Protocol section) in the `warnings` array field.
+
+---
+
+## Model Files
+
+### Location
+Place model files in the `models/` directory:
+
+| File | Purpose |
+|------|---------|
+| `models/model.hef` | **Primary** — Hailo-compiled YOLO model (runs on AI Hat+) |
+| `models/model.pt` | **Fallback** — PyTorch YOLO model (runs on CPU) |
+
+The system searches for models in this order:
+1. Path specified in `config_3d_detection.json` → `detection.model_path`
+2. `models/model.hef` → `models/best.hef` → `models/yolov8n.hef`
+3. `models/model.pt` → `models/best.pt` → `models/weights.pt`
+4. Legacy root paths: `weights.pt`, `best.pt`
+
+### Model Auto-Update
+The system watches the `models/` directory every 30 seconds. When a newer
+`.hef` file is detected (by modification time), it automatically hot-reloads
+the model without restarting the process.
+
+To update a model at runtime:
+1. Download/copy the new `.hef` file to `models/` (use a temporary name)
+2. Rename it to `model.hef` (atomic rename ensures no partial reads)
+3. The system detects the new mtime and reloads within 30 seconds
+4. Check `/api/warnings` or logs for reload confirmation
+
+### Model Hot-Reload API
+```
+POST /api/reload_model?path=models/new_model.hef
+```
+*(Not yet implemented — use file-based auto-update for now)*
 
 ---
 

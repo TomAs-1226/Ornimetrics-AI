@@ -1,6 +1,6 @@
 {
   "detection": {
-    "model_path": "weights.pt",
+    "model_path": "models/model.hef",
     "confidence_threshold": 0.45,
     "input_size": 320
   },
