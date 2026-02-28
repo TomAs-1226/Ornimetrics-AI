@@ -425,6 +425,51 @@ def _init_firebase(cfg: dict):
 # Detection loop  (shared between headless, preview and web modes)
 # ---------------------------------------------------------------------------
 
+def _system_warnings(cfg: dict, depth_provider, indiv_cam, tracker, reid_backend: str) -> List[dict]:
+    """Collect system warnings for the phone app and web API.
+
+    Returns a list of warning dicts, each with:
+      - code: machine-readable string (e.g. "no_depth")
+      - level: "info" | "warning" | "error"
+      - message: human-readable description
+    """
+    warnings = []
+
+    # No depth sensor active
+    if depth_provider is None:
+        warnings.append({
+            "code": "no_depth",
+            "level": "info",
+            "message": "Depth disabled — using appearance-only individual recognition",
+        })
+
+    # Single camera mode
+    if indiv_cam is None:
+        warnings.append({
+            "code": "single_camera",
+            "level": "info",
+            "message": "Single camera mode — detection crop used for individual recognition",
+        })
+
+    # No re-ID
+    if tracker is None:
+        warnings.append({
+            "code": "no_reid",
+            "level": "warning",
+            "message": "Individual recognition unavailable — birds will not be individually identified",
+        })
+
+    # Monocular depth with point_cloud re-ID (unreliable combo)
+    if depth_provider is not None and hasattr(depth_provider, 'to_depth_frame') and "point_cloud" in (reid_backend or ""):
+        warnings.append({
+            "code": "mono_pointcloud",
+            "level": "warning",
+            "message": "Monocular depth + point cloud re-ID may be unreliable for bird-scale objects",
+        })
+
+    return warnings
+
+
 def _is_flat_crop(crop: np.ndarray, threshold: float = 5.0) -> bool:
     """Guard against flat/printed photos — checks for texture variance."""
     if crop is None or crop.size == 0:
@@ -438,9 +483,15 @@ def _is_flat_crop(crop: np.ndarray, threshold: float = 5.0) -> bool:
 def _process_frame(frame, detector, depth_provider, tracker, trap, trap_cfg, flog, conf_default, quiet, indiv_cam=None, indiv_frame=None):
     """Run detection on one frame. Returns (annotated_frame, detections_list).
 
+    Camera pipeline:
+      - Single camera: YOLO detects on `frame`, crops come from `frame`.
+      - Dual camera: YOLO detects on `frame` (camera 0), crops and depth
+        come from `indiv_frame` (camera 1) for higher-quality re-ID.
+
     Supports both depth-based tracking (IndividualBirdTracker) and
     appearance-based tracking (_AppearanceTracker).
     """
+    # YOLO always runs on the main camera (camera 0)
     detections = detector.detect(frame)
     shown = frame.copy()
     results = []
@@ -449,14 +500,17 @@ def _process_frame(frame, detector, depth_provider, tracker, trap, trap_cfg, flo
     depth_frame = None
     if depth_provider is not None:
         if hasattr(depth_provider, 'get_latest'):
-            # CS20 TOF camera
+            # CS20 TOF camera — independent hardware sensor
             depth_frame = depth_provider.get_latest(timeout=0.05)
         elif hasattr(depth_provider, 'to_depth_frame'):
-            # Monocular depth estimator — use individual camera frame if available
+            # Monocular depth — use individual camera frame if available,
+            # otherwise fall back to main camera frame
             src_frame = indiv_frame if indiv_frame is not None else frame
             depth_frame = depth_provider.to_depth_frame(src_frame, time.time())
 
-    # Source frame for individual recognition crops
+    # Source frame for individual recognition crops:
+    # In dual-cam mode, camera 1 provides better quality crops for re-ID.
+    # In single-cam mode, crops come from the same frame YOLO runs on.
     crop_source = indiv_frame if indiv_frame is not None else frame
 
     for det in detections:
@@ -531,7 +585,7 @@ def _process_frame(frame, detector, depth_provider, tracker, trap, trap_cfg, flo
 # Web mode
 # ---------------------------------------------------------------------------
 
-def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=None):
+def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=None, reid_backend="none"):
     from flask import Flask, Response, jsonify, render_template_string
 
     app = Flask(__name__)
@@ -651,6 +705,12 @@ def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv
             "has_indiv_cam": indiv_cam is not None,
         })
 
+    @app.route("/api/warnings")
+    def warnings():
+        return jsonify({
+            "warnings": _system_warnings(cfg, depth_provider, indiv_cam, tracker, reid_backend),
+        })
+
     host = _get(cfg, "web", "host", default="0.0.0.0")
     port = _get(cfg, "web", "port", default=5000)
     print(f"[WEB] http://{host}:{port}")
@@ -700,6 +760,22 @@ def main():
     detector = _init_detector(cfg)
     log(f"[INIT] Detection backend: {detector.get_backend_name()}")
 
+    log("[INIT] Initializing individual camera...")
+    indiv_cam = _init_individual_camera(cfg)
+
+    # Single-camera auto-logic: if no individual camera and depth source is
+    # not a hardware sensor (CS20), disable depth and force appearance re-ID.
+    # Monocular depth from a single RGB camera is unreliable for bird-scale
+    # 3D reconstruction so we skip it entirely in single-camera mode.
+    depth_source = _get(cfg, "depth", "source", default="mono")
+    if indiv_cam is None and depth_source != "cs20":
+        if _get(cfg, "depth", "enabled", default=True):
+            log("[INFO] Single camera detected — disabling depth (use --no-3d or add individual_camera for dual-cam)")
+        cfg["depth"]["enabled"] = False
+        if _get(cfg, "reid", "mode", default="appearance") == "point_cloud":
+            log("[INFO] Switching re-ID from point_cloud to appearance (no depth available)")
+            cfg["reid"]["mode"] = "appearance"
+
     log("[INIT] Initializing depth...")
     depth_provider = _init_depth(cfg)
     depth_label = "CS20 TOF" if (depth_provider and hasattr(depth_provider, 'get_latest')) else "Monocular" if depth_provider else "None"
@@ -710,9 +786,6 @@ def main():
 
     log("[INIT] Initializing tracker...")
     tracker = _init_tracker(cfg, depth_provider, reid_embedder)
-
-    log("[INIT] Initializing individual camera...")
-    indiv_cam = _init_individual_camera(cfg)
 
     log("[INIT] Initializing servo...")
     trap = _init_servo(cfg)
@@ -733,7 +806,7 @@ def main():
     # Web mode
     if _get(cfg, "web", "enabled", default=False):
         try:
-            _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=indiv_cam)
+            _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=indiv_cam, reid_backend=reid_backend)
         except KeyboardInterrupt:
             pass
         finally:

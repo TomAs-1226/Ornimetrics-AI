@@ -227,6 +227,43 @@ Toggle detection on/off.
 ### `POST /api/control/reset_db` (web_detection_server.py only)
 Reset the individual bird database.
 
+### `GET /api/warnings`
+System warnings and notifications. The phone app should poll this endpoint
+periodically (e.g. every 30 seconds) to display status messages to the user.
+
+**Response**:
+```json
+{
+  "warnings": [
+    {
+      "code": "no_depth",
+      "level": "info",
+      "message": "Depth disabled — using appearance-only individual recognition"
+    },
+    {
+      "code": "single_camera",
+      "level": "info",
+      "message": "Single camera mode — detection crop used for individual recognition"
+    }
+  ]
+}
+```
+
+**Warning codes**:
+
+| Code | Level | Meaning |
+|------|-------|---------|
+| `no_depth` | info | Depth processing disabled, appearance-only re-ID active |
+| `single_camera` | info | Single camera mode, main camera used for both detection and re-ID |
+| `no_reid` | warning | Individual recognition unavailable, birds not individually identified |
+| `mono_pointcloud` | warning | Monocular depth + point cloud re-ID may be unreliable |
+
+**Levels**: `info` (normal operating condition), `warning` (degraded accuracy),
+`error` (feature not working).
+
+The same warnings are also available via the Bluetooth `get_status` command
+(see Bluetooth Protocol section) in the `warnings` array field.
+
 ---
 
 ## Flat Photo Guard
@@ -388,7 +425,7 @@ Bluetooth Serial Port Profile (SPP). Service UUID: `00001101-0000-1000-8000-0080
 {"type": "settings_updated", "success": true}
 ```
 
-**`get_status`** — Get device status
+**`get_status`** — Get device status (includes system warnings)
 ```json
 // Response
 {"type": "status", "device_id": "uuid...", "device_name": "My Feeder",
@@ -396,8 +433,16 @@ Bluetooth Serial Port Profile (SPP). Service UUID: `00001101-0000-1000-8000-0080
  "static_ip": "192.168.1.200",
  "streaming": {"enabled": true,
    "mjpeg_url": "http://192.168.1.200:5000/video_feed",
-   "rtsp_url": "rtsp://192.168.1.200:8554/ornimetrics/stream"}}
+   "rtsp_url": "rtsp://192.168.1.200:8554/ornimetrics/stream"},
+ "warnings": [
+   {"code": "no_depth", "level": "info",
+    "message": "Depth disabled — using appearance-only individual recognition"}
+ ]}
 ```
+
+The `warnings` array contains the same warning objects as the `/api/warnings`
+REST endpoint (see Web API Endpoints). The app should display these to the
+user — `info` level for normal status, `warning` for degraded features.
 
 ### Multi-Feeder Configuration
 

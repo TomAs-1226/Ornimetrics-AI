@@ -53,7 +53,8 @@ class BluetoothSetupService:
         self.callbacks = {
             'wifi_configured': None,
             'account_linked': None,
-            'settings_updated': None
+            'settings_updated': None,
+            'get_warnings': None,
         }
 
         # Service UUID (fixed for Ornimetrics OS)
@@ -354,7 +355,15 @@ class BluetoothSetupService:
         }
 
     def _handle_get_status(self, command: Dict) -> Dict:
-        """Get current device status."""
+        """Get current device status, including system warnings."""
+        # Collect warnings from the detection system via callback
+        warnings = []
+        if self.callbacks.get('get_warnings'):
+            try:
+                warnings = self.callbacks['get_warnings']()
+            except Exception:
+                pass
+
         return {
             "type": "status",
             "device_id": self.config["system"]["device_id"],
@@ -367,7 +376,8 @@ class BluetoothSetupService:
                 "enabled": self.config["streaming"]["enabled"],
                 "mjpeg_url": f"http://{self.config['network']['static_ip']}:5000/video_feed",
                 "rtsp_url": f"rtsp://{self.config['network']['static_ip']}:8554/ornimetrics/stream"
-            }
+            },
+            "warnings": warnings
         }
 
     def _verify_session(self, command: Dict) -> bool:
