@@ -38,8 +38,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULTS = {
     "detection": {"model_path": "weights.pt", "confidence_threshold": 0.45, "input_size": 320},
     "camera": {"rgb_source": 0, "width": 640, "height": 480, "fourcc": "MJPG"},
-    "depth": {"enabled": True, "mode": "320x240"},
-    "point_cloud": {"backbone": "light", "fps_points": 1024, "voxel_size": 0.01, "plane_removal": True},
+    "individual_camera": {"enabled": False, "source": 1, "width": 640, "height": 480},
+    "depth": {"enabled": True, "source": "mono", "mode": "320x240", "mono_model": "auto", "mono_input_size": 256},
+    "reid": {"mode": "appearance", "appearance_model": None, "appearance_input_size": 128},
+    "point_cloud": {"backbone": "micro", "fps_points": 512, "voxel_size": 0.01, "plane_removal": True},
     "intrinsics": {"fx": 525.0, "fy": 525.0, "cx": 319.5, "cy": 239.5},
     "tracking": {"database_path": "birdid.sqlite", "match_threshold": 0.32, "cooldown_seconds": 300, "max_per_day": 20},
     "servo": {"channel": 1, "closed_angle": 5.0, "open_angle": 60.0, "min_inter_trigger_sec": 1.5, "slew_deg_per_s": 240.0, "min_us": 1000, "max_us": 2000},
@@ -173,52 +175,220 @@ def _init_detector(cfg: dict):
     return _Wrapper(_yolo, names, conf, imgsz)
 
 
-def _init_3d(cfg: dict):
-    """Initialize depth camera + individual tracker. Returns (camera, tracker) or (None, None)."""
+def _init_depth(cfg: dict):
+    """Initialize depth source. Returns depth_provider or None.
+
+    Supports three modes:
+      - 'cs20': Hardware TOF sensor
+      - 'mono': Monocular depth estimation from RGB
+      - 'none': No depth (appearance-only re-ID)
+    """
     if not _get(cfg, "depth", "enabled", default=True):
-        return None, None
+        return None
+
+    depth_source = _get(cfg, "depth", "source", default="mono")
+
+    if depth_source == "cs20":
+        try:
+            from birdid.camera.cs20 import CS20Camera
+            mode = _get(cfg, "depth", "mode", default="320x240")
+            cam = CS20Camera(mode=mode, fallback_to_synthetic=False)
+            cam.start()
+            time.sleep(0.3)
+            if cam.is_hardware_available():
+                print("[INFO] CS20 depth camera ready")
+                return cam
+            print("[INFO] CS20 not detected, trying monocular fallback")
+            cam.stop()
+        except Exception as e:
+            print(f"[WARN] CS20 init failed: {e}")
+
+    if depth_source in ("mono", "cs20"):
+        try:
+            from src.mono_depth import MonoDepthEstimator
+            model_type = _get(cfg, "depth", "mono_model", default="auto")
+            input_size = _get(cfg, "depth", "mono_input_size", default=256)
+            est = MonoDepthEstimator(model_type=model_type, input_size=input_size)
+            print(f"[INFO] Monocular depth: {est.get_backend_name()}")
+            return est
+        except Exception as e:
+            print(f"[WARN] Monocular depth unavailable: {e}")
+
+    return None
+
+
+def _init_reid(cfg: dict):
+    """Initialize re-ID embedder. Returns (embedder_fn, backend_name) or (None, None).
+
+    Supports three modes:
+      - 'appearance': RGB crop only, no depth needed
+      - 'point_cloud': 3D point cloud via DGCNN
+      - 'tflite': Depth+mask via TFLite model
+    """
+    reid_mode = _get(cfg, "reid", "mode", default="appearance")
+
+    if reid_mode == "appearance":
+        try:
+            from src.appearance_embedder import AppearanceEmbedder
+            model_path = _get(cfg, "reid", "appearance_model", default=None)
+            input_size = _get(cfg, "reid", "appearance_input_size", default=128)
+            emb = AppearanceEmbedder(model_path=model_path, input_size=input_size)
+            return emb, f"appearance ({emb.backend})"
+        except Exception as e:
+            print(f"[WARN] Appearance embedder failed: {e}")
+
+    if reid_mode == "point_cloud":
+        try:
+            from src.reid_embedder import PointReID
+            from src.pc_preprocess import PreprocessConfig
+            pc_cfg = PreprocessConfig(
+                plane_removal=_get(cfg, "point_cloud", "plane_removal", default=True),
+                normalization="center_only",
+                voxel_size=_get(cfg, "point_cloud", "voxel_size", default=0.01),
+                fps_points=_get(cfg, "point_cloud", "fps_points", default=512),
+                depth_gate_k=2.5,
+            )
+            backbone = _get(cfg, "point_cloud", "backbone", default="micro")
+            emb = PointReID(preprocess_config=pc_cfg, model_name=backbone)
+            return emb, f"point_cloud ({backbone})"
+        except Exception as e:
+            print(f"[WARN] PointReID failed: {e}")
+
+    if reid_mode == "tflite":
+        try:
+            from birdid.embedding_tflite import load_embedder
+            embed_fn, backend, path = load_embedder()
+            return embed_fn, f"tflite ({backend})"
+        except Exception as e:
+            print(f"[WARN] TFLite embedder failed: {e}")
+
+    return None, "none"
+
+
+def _init_tracker(cfg: dict, depth_provider, reid_embedder):
+    """Initialize individual bird tracker using the selected depth + re-ID backends."""
+    if reid_embedder is None:
+        return None
+
     try:
-        from birdid.camera.cs20 import CS20Camera
-        from src.depth_to_points import backproject_depth
-        from src.reid_embedder import PointReID
-        from src.pc_preprocess import PreprocessConfig
         from birdid.db import BirdIDDatabase
-        from birdid.validate_3d import validate_point_cloud
-    except Exception as e:
-        print(f"[WARN] 3D modules unavailable: {e}")
-        return None, None
+    except Exception:
+        return None
 
-    mode = _get(cfg, "depth", "mode", default="320x240")
-    cam = CS20Camera(mode=mode, fallback_to_synthetic=False)
-    cam.start()
-    time.sleep(0.3)
-    if not cam.is_hardware_available():
-        print("[INFO] CS20 depth camera not detected — optics-only mode")
-        cam.stop()
-        return None, None
-
-    print("[INFO] CS20 depth camera ready")
-    pc_cfg = PreprocessConfig(
-        plane_removal=_get(cfg, "point_cloud", "plane_removal", default=True),
-        normalization="center_only",
-        voxel_size=_get(cfg, "point_cloud", "voxel_size", default=0.01),
-        fps_points=_get(cfg, "point_cloud", "fps_points", default=1024),
-        depth_gate_k=2.5,
-    )
-    backbone = _get(cfg, "point_cloud", "backbone", default="light")
-    embedder = PointReID(preprocess_config=pc_cfg, model_name=backbone)
     db = BirdIDDatabase(_get(cfg, "tracking", "database_path", default="birdid.sqlite"))
 
-    from detect_3d_individual import IndividualBirdTracker
-    tracker = IndividualBirdTracker(
-        db=db,
-        embedder=embedder,
-        intrinsics=_get(cfg, "intrinsics", default={"fx": 525, "fy": 525, "cx": 319.5, "cy": 239.5}),
-        match_threshold=_get(cfg, "tracking", "match_threshold", default=0.32),
-        cooldown_seconds=_get(cfg, "tracking", "cooldown_seconds", default=300),
-        max_per_day=_get(cfg, "tracking", "max_per_day", default=20),
-    )
-    return cam, tracker
+    # Try the full IndividualBirdTracker if depth + point cloud available
+    reid_mode = _get(cfg, "reid", "mode", default="appearance")
+    if reid_mode == "point_cloud" and depth_provider:
+        try:
+            from detect_3d_individual import IndividualBirdTracker
+            return IndividualBirdTracker(
+                db=db,
+                embedder=reid_embedder,
+                intrinsics=_get(cfg, "intrinsics", default={"fx": 525, "fy": 525, "cx": 319.5, "cy": 239.5}),
+                match_threshold=_get(cfg, "tracking", "match_threshold", default=0.32),
+                cooldown_seconds=_get(cfg, "tracking", "cooldown_seconds", default=300),
+                max_per_day=_get(cfg, "tracking", "max_per_day", default=20),
+            )
+        except Exception as e:
+            print(f"[WARN] IndividualBirdTracker init failed: {e}")
+
+    # Lightweight appearance-based tracker
+    return _AppearanceTracker(db=db, embedder=reid_embedder, cfg=cfg)
+
+
+class _AppearanceTracker:
+    """Simple appearance-based individual tracker for RGB-only mode."""
+
+    def __init__(self, db, embedder, cfg: dict):
+        self.db = db
+        self.embedder = embedder
+        self.match_threshold = _get(cfg, "tracking", "match_threshold", default=0.32)
+        self.cooldown = _get(cfg, "tracking", "cooldown_seconds", default=300)
+        self.max_per_day = _get(cfg, "tracking", "max_per_day", default=20)
+        self._last_seen = {}
+
+    def process_crop(self, crop: np.ndarray, label: str, timestamp: float) -> Optional[dict]:
+        """Match a bird crop to the database.
+
+        Args:
+            crop: BGR bird crop image
+            label: species label
+            timestamp: current time
+
+        Returns:
+            dict with individual_id, individual_name, is_new, can_dispense
+        """
+        if crop is None or crop.size == 0:
+            return None
+
+        embedding = self.embedder.embed(crop)
+        if embedding is None or not hasattr(embedding, 'shape'):
+            return None
+        emb_np = embedding if isinstance(embedding, np.ndarray) else embedding.cpu().numpy()
+
+        match = self.db.match(label, emb_np, self.match_threshold)
+        now = timestamp
+        is_new = match.individual_id is None
+
+        if is_new:
+            individual_id = self.db.enroll(label, emb_np, now)
+            name = self.db.get_name(individual_id)
+            return {"individual_id": individual_id, "individual_name": name, "is_new": True, "can_dispense": False, "confidence": 0.0}
+
+        self.db.mark_seen(match.individual_id, now)
+        name = self.db.get_name(match.individual_id)
+
+        # Cooldown check
+        last = self._last_seen.get(match.individual_id, 0)
+        can_dispense = (now - last) > self.cooldown
+        if can_dispense:
+            today_count = self.db.get_dispense_count_today(match.individual_id) if hasattr(self.db, 'get_dispense_count_today') else 0
+            can_dispense = today_count < self.max_per_day
+
+        return {
+            "individual_id": match.individual_id,
+            "individual_name": name,
+            "is_new": False,
+            "can_dispense": can_dispense,
+            "confidence": match.confidence,
+        }
+
+    def record_dispense(self, individual_id, timestamp):
+        self._last_seen[individual_id] = timestamp
+        self.db.record_dispense(individual_id, timestamp)
+
+
+def _init_individual_camera(cfg: dict):
+    """Initialize optional second camera for individual recognition."""
+    if not _get(cfg, "individual_camera", "enabled", default=False):
+        return None
+    source = _get(cfg, "individual_camera", "source", default=1)
+    if source < 0:
+        return None
+    try:
+        cap = cv2.VideoCapture(source, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, _get(cfg, "individual_camera", "width", default=640))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, _get(cfg, "individual_camera", "height", default=480))
+        if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        ok, test = cap.read()
+        if ok and test is not None:
+            print(f"[INFO] Individual camera ready (source={source})")
+            return cap
+        cap.release()
+    except Exception as e:
+        print(f"[WARN] Individual camera failed: {e}")
+    return None
+
+
+# Legacy compatibility: keep _init_3d working for code that imports it
+def _init_3d(cfg: dict):
+    """Legacy wrapper — use _init_depth + _init_reid + _init_tracker instead."""
+    depth = _init_depth(cfg)
+    reid, _ = _init_reid(cfg)
+    tracker = _init_tracker(cfg, depth, reid)
+    return depth, tracker
 
 
 def _init_servo(cfg: dict):
@@ -255,20 +425,57 @@ def _init_firebase(cfg: dict):
 # Detection loop  (shared between headless, preview and web modes)
 # ---------------------------------------------------------------------------
 
-def _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog, conf_default, quiet):
-    """Run detection on one frame. Returns (annotated_frame, detections_list)."""
+def _is_flat_crop(crop: np.ndarray, threshold: float = 5.0) -> bool:
+    """Guard against flat/printed photos — checks for texture variance."""
+    if crop is None or crop.size == 0:
+        return True
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    var = lap.var()
+    return var < threshold
+
+
+def _process_frame(frame, detector, depth_provider, tracker, trap, trap_cfg, flog, conf_default, quiet, indiv_cam=None, indiv_frame=None):
+    """Run detection on one frame. Returns (annotated_frame, detections_list).
+
+    Supports both depth-based tracking (IndividualBirdTracker) and
+    appearance-based tracking (_AppearanceTracker).
+    """
     detections = detector.detect(frame)
-    depth_frame = depth_camera.get_latest(timeout=0.05) if depth_camera else None
     shown = frame.copy()
     results = []
+
+    # Get depth frame if depth provider available
+    depth_frame = None
+    if depth_provider is not None:
+        if hasattr(depth_provider, 'get_latest'):
+            # CS20 TOF camera
+            depth_frame = depth_provider.get_latest(timeout=0.05)
+        elif hasattr(depth_provider, 'to_depth_frame'):
+            # Monocular depth estimator — use individual camera frame if available
+            src_frame = indiv_frame if indiv_frame is not None else frame
+            depth_frame = depth_provider.to_depth_frame(src_frame, time.time())
+
+    # Source frame for individual recognition crops
+    crop_source = indiv_frame if indiv_frame is not None else frame
+
     for det in detections:
         x1, y1, x2, y2 = det["bbox"]
         label = det["class_name"]
         conf = det["confidence"]
 
+        # Extract crop for re-ID
+        crop = crop_source[max(0, y1):min(crop_source.shape[0], y2), max(0, x1):min(crop_source.shape[1], x2)].copy()
+
         individual = None
-        if tracker and depth_frame:
-            individual = tracker.process_detection((x1, y1, x2, y2), label, depth_frame, time.time())
+        if tracker:
+            if hasattr(tracker, 'process_crop'):
+                # Appearance-based tracker
+                if not _is_flat_crop(crop):
+                    individual = tracker.process_crop(crop, label, time.time())
+            elif hasattr(tracker, 'process_detection') and depth_frame:
+                # Depth-based tracker (IndividualBirdTracker)
+                individual = tracker.process_detection((x1, y1, x2, y2), label, depth_frame, time.time())
 
         action = _action_for(label, trap_cfg, conf_default)
         open_dur = float(action.get("open_duration", 1.5))
@@ -290,11 +497,13 @@ def _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog,
                 moved = trap.trigger(open_duration=open_dur, cooldown_duration=cooldown, label=label, confidence=float(conf), min_conf=min_conf, force=False)
                 if moved:
                     print(f"[TRIG] {label} conf={conf:.2f}")
-                    if individual and tracker:
-                        tracker.db.record_dispense(individual["individual_id"], time.time())
+                    if individual:
+                        if hasattr(tracker, 'record_dispense'):
+                            tracker.record_dispense(individual["individual_id"], time.time())
+                        elif hasattr(tracker, 'db'):
+                            tracker.db.record_dispense(individual["individual_id"], time.time())
                     if flog:
                         try:
-                            crop = frame[max(0, y1):min(frame.shape[0], y2), max(0, x1):min(frame.shape[1], x2)].copy()
                             if crop.size == 0:
                                 crop = frame
                             ok2, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
@@ -312,7 +521,8 @@ def _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog,
             text += f" | {individual.get('individual_name', '?')}"
         if moved:
             text += " [TRIG]"
-        cv2.putText(shown, text, (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 2, cv2.LINE_AA)
+        flat_tag = " [FLAT]" if _is_flat_crop(crop) else ""
+        cv2.putText(shown, text + flat_tag, (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 2, cv2.LINE_AA)
         results.append({"bbox": (x1, y1, x2, y2), "label": label, "conf": conf, "moved": moved, "individual": individual})
     return shown, results
 
@@ -321,7 +531,7 @@ def _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog,
 # Web mode
 # ---------------------------------------------------------------------------
 
-def _run_web(cfg, detector, depth_camera, tracker, trap, trap_cfg, flog):
+def _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=None):
     from flask import Flask, Response, jsonify, render_template_string
 
     app = Flask(__name__)
@@ -329,7 +539,11 @@ def _run_web(cfg, detector, depth_camera, tracker, trap, trap_cfg, flog):
     quiet = _get(cfg, "display", "quiet", default=False)
     stream_fps = _get(cfg, "web", "stream_fps", default=15)
 
-    _state = {"frame": None, "lock": threading.Lock(), "running": True, "stats": {"dets": 0, "trigs": 0}, "fps": deque(maxlen=60)}
+    _state = {
+        "frame": None, "indiv_frame": None, "lock": threading.Lock(),
+        "running": True, "stats": {"dets": 0, "trigs": 0, "individuals": 0},
+        "fps": deque(maxlen=60),
+    }
 
     def _loop():
         cap = cv2.VideoCapture(_get(cfg, "camera", "rgb_source", default=0), cv2.CAP_V4L2)
@@ -345,61 +559,97 @@ def _run_web(cfg, detector, depth_camera, tracker, trap, trap_cfg, flog):
             if not ok or frame is None:
                 time.sleep(0.01)
                 continue
+            # Read from individual camera if available
+            i_frame = None
+            if indiv_cam is not None:
+                ok2, i_frame = indiv_cam.read()
+                if not ok2:
+                    i_frame = None
             trap.tick()
             t0 = _mono()
-            shown, results = _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog, conf_default, quiet)
+            shown, results = _process_frame(
+                frame, detector, depth_provider, tracker, trap, trap_cfg, flog,
+                conf_default, quiet, indiv_cam=indiv_cam, indiv_frame=i_frame,
+            )
             dt = _mono() - t0
             if dt > 0:
                 _state["fps"].append(1.0 / dt)
             _state["stats"]["dets"] += len(results)
             _state["stats"]["trigs"] += sum(1 for r in results if r["moved"])
+            _state["stats"]["individuals"] += sum(1 for r in results if r.get("individual"))
             with _state["lock"]:
                 _state["frame"] = shown
+                if i_frame is not None:
+                    _state["indiv_frame"] = i_frame
             time.sleep(1.0 / stream_fps)
         cap.release()
+        if indiv_cam is not None:
+            indiv_cam.release()
 
     threading.Thread(target=_loop, daemon=True).start()
 
     DASHBOARD = """<!DOCTYPE html><html><head><title>Ornimetrics</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:sans-serif;background:#111;color:#eee}
-    .c{max-width:900px;margin:0 auto;padding:20px}h1{color:#5bc0de;margin-bottom:10px}
-    img{width:100%;border-radius:8px;background:#000}
-    .s{display:flex;gap:20px;margin:20px 0}.sb{flex:1;background:#1c2938;padding:15px;border-radius:8px;text-align:center}
-    .sv{font-size:2em;font-weight:bold;color:#5bc0de}.sl{color:#888;font-size:.9em}</style></head>
+    .c{max-width:1200px;margin:0 auto;padding:20px}h1{color:#5bc0de;margin-bottom:10px}
+    .feeds{display:flex;gap:15px;flex-wrap:wrap}.feed{flex:1;min-width:300px}
+    .feed img{width:100%;border-radius:8px;background:#000}
+    .feed h3{color:#888;margin:5px 0;font-size:.9em}
+    .s{display:flex;gap:15px;margin:20px 0;flex-wrap:wrap}
+    .sb{flex:1;min-width:120px;background:#1c2938;padding:15px;border-radius:8px;text-align:center}
+    .sv{font-size:1.8em;font-weight:bold;color:#5bc0de}.sl{color:#888;font-size:.85em}</style></head>
     <body><div class="c"><h1>Ornimetrics</h1><p style="color:#888;margin-bottom:15px">Bird Detection System</p>
-    <img src="/video_feed" alt="stream">
-    <div class="s"><div class="sb"><div class="sv" id="fps">--</div><div class="sl">FPS</div></div>
-    <div class="sb"><div class="sv" id="dets">0</div><div class="sl">Detections</div></div>
-    <div class="sb"><div class="sv" id="trigs">0</div><div class="sl">Triggers</div></div></div>
-    </div><script>setInterval(()=>fetch('/api/stats').then(r=>r.json()).then(d=>{
-    document.getElementById('fps').textContent=d.fps.toFixed(1);
-    document.getElementById('dets').textContent=d.dets;
-    document.getElementById('trigs').textContent=d.trigs;}),1000)</script></body></html>"""
+    <div class="feeds">
+      <div class="feed"><h3>Detection Feed</h3><img src="/video_feed" alt="detection"></div>
+      <div class="feed" id="indiv-feed" style="display:none"><h3>Individual Camera</h3><img src="/video_feed_individual" alt="individual"></div>
+    </div>
+    <div class="s">
+      <div class="sb"><div class="sv" id="fps">--</div><div class="sl">FPS</div></div>
+      <div class="sb"><div class="sv" id="dets">0</div><div class="sl">Detections</div></div>
+      <div class="sb"><div class="sv" id="indivs">0</div><div class="sl">Individuals</div></div>
+      <div class="sb"><div class="sv" id="trigs">0</div><div class="sl">Triggers</div></div>
+    </div>
+    </div><script>
+    setInterval(()=>fetch('/api/stats').then(r=>r.json()).then(d=>{
+      document.getElementById('fps').textContent=d.fps.toFixed(1);
+      document.getElementById('dets').textContent=d.dets;
+      document.getElementById('indivs').textContent=d.individuals;
+      document.getElementById('trigs').textContent=d.trigs;
+      if(d.has_indiv_cam)document.getElementById('indiv-feed').style.display='block';
+    }),1000)</script></body></html>"""
 
     @app.route("/")
     def index():
         return render_template_string(DASHBOARD)
 
+    def _gen_stream(key):
+        while True:
+            with _state["lock"]:
+                f = _state.get(key)
+            if f is None:
+                blank = np.zeros((480, 640, 3), dtype=np.uint8)
+                _, buf = cv2.imencode(".jpg", blank)
+            else:
+                _, buf = cv2.imencode(".jpg", f, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+            time.sleep(0.033)
+
     @app.route("/video_feed")
     def video_feed():
-        def gen():
-            while True:
-                with _state["lock"]:
-                    f = _state["frame"]
-                if f is None:
-                    blank = np.zeros((480, 640, 3), dtype=np.uint8)
-                    _, buf = cv2.imencode(".jpg", blank)
-                else:
-                    _, buf = cv2.imencode(".jpg", f, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
-                time.sleep(0.033)
-        return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        return Response(_gen_stream("frame"), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+    @app.route("/video_feed_individual")
+    def video_feed_individual():
+        return Response(_gen_stream("indiv_frame"), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.route("/api/stats")
     def stats():
         fps = sum(_state["fps"]) / max(len(_state["fps"]), 1)
-        return jsonify({"fps": fps, "dets": _state["stats"]["dets"], "trigs": _state["stats"]["trigs"]})
+        return jsonify({
+            "fps": fps, "dets": _state["stats"]["dets"],
+            "trigs": _state["stats"]["trigs"], "individuals": _state["stats"]["individuals"],
+            "has_indiv_cam": indiv_cam is not None,
+        })
 
     host = _get(cfg, "web", "host", default="0.0.0.0")
     port = _get(cfg, "web", "port", default=5000)
@@ -448,12 +698,21 @@ def main():
     # Initialize hardware
     log("[INIT] Loading YOLO model...")
     detector = _init_detector(cfg)
-    log(f"[INIT] Backend: {detector.get_backend_name()}")
+    log(f"[INIT] Detection backend: {detector.get_backend_name()}")
 
-    log("[INIT] Initializing 3D camera...")
-    depth_camera, tracker = _init_3d(cfg)
-    mode = "Full 3D" if depth_camera and tracker else "Optics-Only"
-    log(f"[INIT] Mode: {mode}")
+    log("[INIT] Initializing depth...")
+    depth_provider = _init_depth(cfg)
+    depth_label = "CS20 TOF" if (depth_provider and hasattr(depth_provider, 'get_latest')) else "Monocular" if depth_provider else "None"
+
+    log("[INIT] Initializing re-ID...")
+    reid_embedder, reid_backend = _init_reid(cfg)
+    log(f"[INIT] Re-ID backend: {reid_backend}")
+
+    log("[INIT] Initializing tracker...")
+    tracker = _init_tracker(cfg, depth_provider, reid_embedder)
+
+    log("[INIT] Initializing individual camera...")
+    indiv_cam = _init_individual_camera(cfg)
 
     log("[INIT] Initializing servo...")
     trap = _init_servo(cfg)
@@ -466,17 +725,22 @@ def main():
     if flog:
         log("[INIT] Firebase enabled")
 
+    mode = f"Depth={depth_label} | ReID={reid_backend}"
+    if indiv_cam:
+        mode += " | DualCam"
     print(f"[READY] {mode} | {detector.get_backend_name()}")
 
     # Web mode
     if _get(cfg, "web", "enabled", default=False):
         try:
-            _run_web(cfg, detector, depth_camera, tracker, trap, trap_cfg, flog)
+            _run_web(cfg, detector, depth_provider, tracker, trap, trap_cfg, flog, indiv_cam=indiv_cam)
         except KeyboardInterrupt:
             pass
         finally:
-            if depth_camera:
-                depth_camera.stop()
+            if depth_provider and hasattr(depth_provider, 'stop'):
+                depth_provider.stop()
+            if indiv_cam:
+                indiv_cam.release()
         return
 
     # Headless / preview mode
@@ -529,8 +793,18 @@ def main():
             if frame_idx % every_n != 0:
                 continue
 
+            # Read individual camera if available
+            i_frame = None
+            if indiv_cam is not None:
+                ok_i, i_frame = indiv_cam.read()
+                if not ok_i:
+                    i_frame = None
+
             t0 = _mono()
-            shown, results = _process_frame(frame, detector, depth_camera, tracker, trap, trap_cfg, flog, conf_default, quiet)
+            shown, results = _process_frame(
+                frame, detector, depth_provider, tracker, trap, trap_cfg, flog,
+                conf_default, quiet, indiv_cam=indiv_cam, indiv_frame=i_frame,
+            )
             dt = _mono() - t0
             if dt > 0:
                 fps_hist.append(1.0 / dt)
@@ -554,8 +828,10 @@ def main():
             cv2.destroyAllWindows()
         except Exception:
             pass
-        if depth_camera:
-            depth_camera.stop()
+        if depth_provider and hasattr(depth_provider, 'stop'):
+            depth_provider.stop()
+        if indiv_cam:
+            indiv_cam.release()
 
 
 if __name__ == "__main__":

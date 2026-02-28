@@ -6,6 +6,7 @@ import torch
 from src.pc_preprocess import preprocess_with_stats, DEFAULT_POINTS, PreprocessConfig
 from src.models.dgcnn import DGCNN
 from src.models.dgcnn_heavy import DGCNNHeavy
+from src.models.dgcnn_micro import DGCNNMicro
 
 
 @dataclass
@@ -29,6 +30,8 @@ class PointReID:
         input_dims = 3 + int(self.preprocess_config.append_scale)
         if model_name == "heavy":
             self.model = DGCNNHeavy(emb_dims=max(emb_dims, 384), input_dims=input_dims).to(self.device)
+        elif model_name == "micro":
+            self.model = DGCNNMicro(emb_dims=min(emb_dims, 64), input_dims=input_dims).to(self.device)
         else:
             self.model = DGCNN(emb_dims=emb_dims, input_dims=input_dims).to(self.device)
         if model_path:

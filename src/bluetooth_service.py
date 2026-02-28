@@ -121,7 +121,11 @@ class BluetoothSetupService:
             port = self.server_sock.getsockname()[1]
 
             # Advertise service
-            device_name = self.config.get("bluetooth", {}).get("device_name", "Ornimetrics OS")
+            # Include device_id suffix so multiple feeders are distinguishable
+            base_name = self.config.get("bluetooth", {}).get("device_name", "Ornimetrics OS")
+            device_id = self.config.get("system", {}).get("device_id", "")
+            id_suffix = device_id[-6:] if len(device_id) >= 6 else device_id
+            device_name = f"{base_name}-{id_suffix}" if id_suffix else base_name
 
             bluetooth.advertise_service(
                 self.server_sock,

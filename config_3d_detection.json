@@ -4,34 +4,59 @@
     "confidence_threshold": 0.45,
     "input_size": 320
   },
+
   "camera": {
     "rgb_source": 0,
     "width": 640,
     "height": 480,
     "fourcc": "MJPG"
   },
-  "depth": {
-    "enabled": true,
-    "mode": "320x240"
+
+  "individual_camera": {
+    "_comment": "Optional second camera for individual recognition. Set source to -1 to disable (uses main camera instead).",
+    "enabled": false,
+    "source": 1,
+    "width": 640,
+    "height": 480
   },
+
+  "depth": {
+    "_comment": "Depth source: 'cs20' for TOF sensor, 'mono' for monocular estimation from RGB, 'none' to disable",
+    "source": "mono",
+    "enabled": true,
+    "mode": "320x240",
+    "mono_model": "auto",
+    "mono_input_size": 256
+  },
+
+  "reid": {
+    "_comment": "Individual re-ID mode: 'appearance' (RGB only, no depth), 'point_cloud' (needs depth), 'tflite' (depth+mask)",
+    "mode": "appearance",
+    "appearance_model": null,
+    "appearance_input_size": 128
+  },
+
   "point_cloud": {
-    "backbone": "light",
-    "fps_points": 1024,
+    "backbone": "micro",
+    "fps_points": 512,
     "voxel_size": 0.01,
     "plane_removal": true
   },
+
   "intrinsics": {
     "fx": 525.0,
     "fy": 525.0,
     "cx": 319.5,
     "cy": 239.5
   },
+
   "tracking": {
     "database_path": "birdid.sqlite",
     "match_threshold": 0.32,
     "cooldown_seconds": 300,
     "max_per_day": 20
   },
+
   "servo": {
     "channel": 1,
     "closed_angle": 5.0,
@@ -41,21 +66,26 @@
     "min_us": 1000,
     "max_us": 2000
   },
+
   "trap_settings": "trap_settings_full.json",
+
   "firebase": {
     "enabled": true,
     "database_url": "https://ornimetrics-default-rtdb.firebaseio.com",
     "session_key": "session_1"
   },
+
   "performance": {
     "max_fps": 12.0,
     "every_n_frames": 1
   },
+
   "display": {
     "preview": true,
     "scale": 0.6,
     "quiet": false
   },
+
   "web": {
     "enabled": true,
     "host": "0.0.0.0",
