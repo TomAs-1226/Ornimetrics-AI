@@ -113,6 +113,14 @@ def initialize_config() -> Dict:
     if config_path.exists():
         print(f"{Colors.BLUE}ℹ️{Colors.RESET}  Configuration exists, loading...")
         config = load_config()
+        # Replace template placeholder device_id with a real UUID
+        device_id = config.get("system", {}).get("device_id", "")
+        if not device_id or "{GENERATED_ON_FIRST_BOOT}" in device_id:
+            import socket
+            config.setdefault("system", {})["device_id"] = str(uuid.uuid4())
+            config["system"].setdefault("device_name", socket.gethostname())
+            save_config(config)
+            print(f"{Colors.GREEN}✅{Colors.RESET} Generated Device ID: {config['system']['device_id']}")
     else:
         print(f"{Colors.CYAN}Creating default configuration...{Colors.RESET}")
 

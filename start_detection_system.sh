@@ -84,10 +84,10 @@ check_package() {
     return 0
 }
 
-check_package "cv2" "opencv-python"
-check_package "numpy" "numpy"
-check_package "flask" "flask"
-check_package "ultralytics" "ultralytics"
+check_package "cv2" "opencv-python" || true
+check_package "numpy" "numpy" || true
+check_package "flask" "flask" || true
+check_package "ultralytics" "ultralytics" || true
 
 if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
     log_warn "Missing packages: ${MISSING_PACKAGES[*]}"
